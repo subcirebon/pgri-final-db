@@ -82,7 +82,7 @@ const Layout = ({ onLogout, userRole }: { onLogout: () => void, userRole: string
 
         {/* FOOTER SIDEBAR (Hanya Copyright, Tombol Keluar DIHAPUS dari sini) */}
         <div className="p-4 bg-red-900 border-t border-red-800 text-center text-xs text-red-300/50">
-          &copy; 2026 PGRI Kalijaga
+          &copy; 2026 PGRI Ranting Kalijaga
         </div>
       </aside>
 
