@@ -4,7 +4,7 @@ import { supabase } from './supabaseClient';
 import { jsPDF } from 'jspdf';
 import { 
   Search, Trash2, Edit, Printer, Loader2, Mail, 
-  ArrowDownLeft, FileText, X
+  ArrowDownLeft, FileText, X, Download, ArrowLeft
 } from 'lucide-react';
 
 interface Letter {
@@ -33,27 +33,21 @@ const Letters = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
 
+  // STATE UNTUK PREVIEW PDF
+  const [showPreview, setShowPreview] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [currentLetter, setCurrentLetter] = useState<Letter | null>(null);
+
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
-    ref_number: '',
-    subject: '',
-    type: 'UNDANGAN',
-    sender_receiver: '',
-    attachment: '-',
-    event_date: '',
-    venue: '',
-    agenda: ''
+    ref_number: '', subject: '', type: 'UNDANGAN',
+    sender_receiver: '', attachment: '-', event_date: '', venue: '', agenda: ''
   });
 
   const fetchLetters = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('letters')
-      .select('*')
-      .order('id', { ascending: false });
-
-    if (error) console.error(error);
-    else {
+    const { data, error } = await supabase.from('letters').select('*').order('id', { ascending: false });
+    if (!error) {
       setLetters(data || []);
       if (data && data.length > 0) setLastRef(data[0].ref_number);
     }
@@ -62,210 +56,172 @@ const Letters = () => {
 
   useEffect(() => { fetchLetters(); }, []);
 
-  const openModal = (type: string) => {
-    setFormData({
-      date: new Date().toISOString().split('T')[0],
-      ref_number: '',
-      subject: '',
-      type: type,
-      sender_receiver: '',
-      attachment: '-',
-      event_date: '',
-      venue: '',
-      agenda: ''
-    });
-    setIsEditing(false);
-    setShowModal(true);
+  // FUNGSI FORMAT TANGGAL INDONESIA
+  const formatTanggalIndo = (dateStr: string) => {
+    if (!dateStr) return '';
+    const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+    const d = new Date(dateStr);
+    return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    let error;
-    if (isEditing && editId !== null) {
-      const res = await supabase.from('letters').update(formData).eq('id', editId);
-      error = res.error;
-    } else {
-      const res = await supabase.from('letters').insert([formData]);
-      error = res.error;
-    }
-    if (!error) {
-      alert('Arsip Berhasil Disimpan!');
-      fetchLetters();
-      setShowModal(false);
-    } else alert('Gagal: ' + error.message);
-    setLoading(false);
-  };
-
-  const handleDelete = async (id: number) => {
-    if (window.confirm('Hapus arsip ini?')) {
-      const { error } = await supabase.from('letters').delete().eq('id', id);
-      if (!error) fetchLetters();
-    }
-  };
-
-  // --- FUNGSI EKSPORT PDF SESUAI REQUEST PAK DENDI ---
-  const exportToPDF = (l: Letter) => {
-    const doc = new jsPDF({
-      unit: 'mm',
-      format: [215, 330] // Ukuran F4 / Folio
-    });
-
-    // 1. Ruang kosong 5 cm (50mm) di atas untuk kertas berkop manual
-    const marginAtas = 55; 
+  // GENERATE PDF UNTUK PREVIEW & DOWNLOAD
+  const generatePDF = (l: Letter, action: 'preview' | 'download') => {
+    const doc = new jsPDF({ unit: 'mm', format: [215, 330] });
+    const marginAtas = 55; // Ruang 5cm lebih untuk kop manual
+    const labelX = 20;
+    const titikDuaX = 45; // Titik dua lurus di koordinat 45mm
+    const isiX = 48;
 
     doc.setFontSize(11);
     doc.setFont('helvetica', 'normal');
 
-    // 2. Titimangsa: Cirebon, [tanggal]
-    doc.text(`Cirebon, ${l.date}`, 140, marginAtas); 
+    // 1. Titimangsa
+    doc.text(`Cirebon, ${formatTanggalIndo(l.date)}`, 140, marginAtas); 
     
-    // 3. Header Surat
-    doc.text(`Nomor     : ${l.ref_number}`, 20, marginAtas + 10);
-    doc.text(`Lampiran  : ${l.attachment}`, 20, marginAtas + 15);
-    doc.text(`Perihal     : ${l.subject}`, 20, marginAtas + 20);
+    // 2. Header Surat (Titik Dua Diluruskan)
+    doc.text('Nomor', labelX, marginAtas + 10); doc.text(':', titikDuaX, marginAtas + 10); doc.text(l.ref_number, isiX, marginAtas + 10);
+    doc.text('Lampiran', labelX, marginAtas + 15); doc.text(':', titikDuaX, marginAtas + 15); doc.text(l.attachment, isiX, marginAtas + 15);
+    doc.text('Perihal', labelX, marginAtas + 20); doc.text(':', titikDuaX, marginAtas + 20); doc.setFont('helvetica', 'bold'); doc.text(l.subject, isiX, marginAtas + 20);
 
-    // 4. Tujuan
+    // 3. Tujuan
+    doc.setFont('helvetica', 'normal');
     doc.text('Kepada Yth,', 20, marginAtas + 35);
     doc.setFont('helvetica', 'bold');
     doc.text(`${l.sender_receiver}`, 20, marginAtas + 40);
     doc.setFont('helvetica', 'normal');
     doc.text('di Tempat', 20, marginAtas + 45);
 
-    // 5. Pembuka
+    // 4. Isi & Detail (Titik Dua Diluruskan)
     doc.text('Dengan hormat,', 20, marginAtas + 60);
     doc.text('Mengharap kehadiran Bapak/Ibu Anggota PGRI Ranting Kalijaga pada:', 20, marginAtas + 65);
 
-    // 6. Detail Acara (Indentasi ke kanan sedikit)
-    doc.text(`Hari/Tanggal : ${l.event_date}`, 35, marginAtas + 75);
-    doc.text(`Tempat           : ${l.venue}`, 35, marginAtas + 82);
-    doc.text(`Acara             : ${l.agenda}`, 35, marginAtas + 89);
+    const detailX = 30;
+    const detailTitikDuaX = 58;
+    const detailIsiX = 61;
 
-    // 7. Penutup
+    doc.text('Hari/Tanggal', detailX, marginAtas + 75); doc.text(':', detailTitikDuaX, marginAtas + 75); doc.text(l.event_date, detailIsiX, marginAtas + 75);
+    doc.text('Tempat', detailX, marginAtas + 82); doc.text(':', detailTitikDuaX, marginAtas + 82); doc.text(l.venue, detailIsiX, marginAtas + 82);
+    doc.text('Acara', detailX, marginAtas + 89); doc.text(':', detailTitikDuaX, marginAtas + 89); doc.text(l.agenda, detailIsiX, marginAtas + 89);
+
     doc.text('Demikian undangan ini kami sampaikan, atas kehadirannya diucapkan terima kasih.', 20, marginAtas + 105);
 
-    // 8. Tanda Tangan (Tanpa Stempel)
+    // 5. Tanda Tangan
     doc.text('Ketua Ranting,', 140, marginAtas + 125);
-    
-    doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
     doc.text('DENDI SUPARMAN, S.Pd.SD', 140, marginAtas + 150);
-    doc.line(140, marginAtas + 151, 195, marginAtas + 151); // Garis bawah nama
+    doc.line(140, marginAtas + 151, 195, marginAtas + 151);
     doc.setFont('helvetica', 'normal');
     doc.text('NPA. 00001', 140, marginAtas + 156);
 
-    doc.save(`Undangan_${l.ref_number}.pdf`);
+    if (action === 'preview') {
+      const blob = doc.output('bloburl');
+      setPdfUrl(blob);
+      setCurrentLetter(l);
+      setShowPreview(true);
+    } else {
+      doc.save(`Undangan_${l.ref_number}.pdf`);
+    }
   };
 
-  const filteredLetters = letters.filter(l => 
-    (l.subject?.toLowerCase() || '').includes(searchTerm.toLowerCase()) || 
-    (l.ref_number?.toLowerCase() || '').includes(searchTerm.toLowerCase())
-  );
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    const res = isEditing ? await supabase.from('letters').update(formData).eq('id', editId) : await supabase.from('letters').insert([formData]);
+    if (!res.error) {
+      alert('Arsip Berhasil Disimpan!');
+      fetchLetters();
+      setShowModal(false);
+    } else alert('Gagal: ' + res.error.message);
+    setLoading(false);
+  };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
+    <div className="space-y-6">
+      {/* HEADER */}
       <div className="flex justify-between items-end bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800 uppercase italic tracking-tight">Administrasi Surat</h1>
-          <div className="flex items-center gap-2 mt-1">
-             <div className="bg-red-50 text-red-700 px-3 py-1 rounded-full text-[10px] font-black border border-red-100 flex items-center gap-1 shadow-sm">
-               <FileText size={12}/> NO. TERAKHIR: {lastRef || '-'}
-             </div>
-          </div>
+          <h1 className="text-2xl font-bold text-gray-800 uppercase italic">Administrasi Surat</h1>
+          <div className="mt-1"><span className="bg-red-50 text-red-700 px-3 py-1 rounded-full text-[10px] font-black border border-red-100 flex items-center gap-1 shadow-sm"><FileText size={12}/> NO. TERAKHIR: {lastRef || '-'}</span></div>
         </div>
         {isAdmin && (
           <div className="flex gap-2">
-            <button onClick={() => openModal('UNDANGAN')} className="bg-blue-600 text-white px-5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 shadow-lg hover:bg-blue-700 transition-all">
-              <Mail size={16} /> Buat Undangan
-            </button>
-            <button onClick={() => openModal('MASUK')} className="bg-orange-600 text-white px-5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 shadow-lg hover:bg-orange-700 transition-all">
-              <ArrowDownLeft size={16} /> Surat Masuk
-            </button>
+            <button onClick={() => { setFormData({date: new Date().toISOString().split('T')[0], ref_number: '', subject: '', type: 'UNDANGAN', sender_receiver: '', attachment: '-', event_date: '', venue: '', agenda: ''}); setIsEditing(false); setShowModal(true); }} className="bg-blue-600 text-white px-5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 shadow-lg hover:bg-blue-700 transition-all"><Mail size={16} /> Buat Undangan</button>
           </div>
         )}
       </div>
 
+      {/* SEARCH */}
       <div className="relative">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-        <input type="text" placeholder="Cari Perihal atau No. Surat..." className="w-full pl-12 pr-4 py-3 bg-white border border-gray-100 rounded-2xl outline-none focus:ring-2 focus:ring-red-600 shadow-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} /><input type="text" placeholder="Cari Perihal atau No. Surat..." className="w-full pl-12 pr-4 py-3 bg-white border border-gray-100 rounded-2xl outline-none focus:ring-2 focus:ring-red-600 shadow-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
       </div>
 
+      {/* TABLE */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <table className="w-full text-left text-sm uppercase">
-          <thead className="bg-gray-50 text-gray-500 font-bold text-[10px] border-b tracking-widest">
-            <tr>
-              <th className="p-4">Tanggal & No</th>
-              <th className="p-4">Perihal</th>
-              <th className="p-4">Acara</th>
-              <th className="p-4 text-right">Aksi</th>
-            </tr>
+          <thead className="bg-gray-50 text-gray-500 font-bold text-[10px] border-b">
+            <tr><th className="p-4">Tanggal & No</th><th className="p-4">Perihal</th><th className="p-4 text-right">Aksi</th></tr>
           </thead>
           <tbody className="divide-y">
-            {loading ? (
-              <tr><td colSpan={4} className="p-10 text-center"><Loader2 className="animate-spin mx-auto text-red-800" /></td></tr>
-            ) : filteredLetters.length === 0 ? (
-              <tr><td colSpan={4} className="p-10 text-center text-gray-400 italic">Belum ada arsip surat di database.</td></tr>
-            ) : (
-              filteredLetters.map((l) => (
-                <tr key={l.id} className="hover:bg-gray-50 transition-colors group">
-                  <td className="p-4">
-                    <div className="text-[10px] text-gray-400">{l.date}</div>
-                    <div className="font-bold text-red-800">{l.ref_number}</div>
-                  </td>
-                  <td className="p-4 font-bold text-gray-700">{l.subject}</td>
-                  <td className="p-4 text-[10px] text-gray-500">{l.agenda || '-'}</td>
-                  <td className="p-4 text-right">
-                    <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      {l.type === 'UNDANGAN' && <button onClick={() => exportToPDF(l)} className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"><Printer size={18}/></button>}
-                      <button onClick={() => { setFormData({...l}); setEditId(l.id); setIsEditing(true); setShowModal(true); }} className="p-2 text-gray-400 hover:bg-gray-100 rounded-lg"><Edit size={16}/></button>
-                      <button onClick={() => handleDelete(l.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg"><Trash2 size={16}/></button>
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
+            {letters.filter(l => l.subject.toLowerCase().includes(searchTerm.toLowerCase())).map((l) => (
+              <tr key={l.id} className="hover:bg-gray-50 transition-colors group">
+                <td className="p-4">
+                  <div className="text-[10px] text-gray-400">{formatTanggalIndo(l.date)}</div>
+                  <div className="font-bold text-red-800">{l.ref_number}</div>
+                </td>
+                <td className="p-4 font-bold text-gray-700">{l.subject}</td>
+                <td className="p-4 text-right">
+                  <div className="flex justify-end gap-1">
+                    {l.type === 'UNDANGAN' && <button onClick={() => generatePDF(l, 'preview')} className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg"><Printer size={18}/></button>}
+                    <button onClick={async () => { if(window.confirm('Hapus arsip?')) { await supabase.from('letters').delete().eq('id', l.id); fetchLetters(); } }} className="p-2 text-red-600 hover:bg-red-50 rounded-lg"><Trash2 size={16}/></button>
+                  </div>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
 
+      {/* MODAL PREVIEW PDF (FITUR BARU) */}
+      {showPreview && pdfUrl && (
+        <div className="fixed inset-0 bg-black/80 z-[60] flex flex-col p-4 backdrop-blur-md">
+          <div className="flex justify-between items-center bg-white p-4 rounded-t-2xl border-b">
+            <div className="flex items-center gap-3">
+              <button onClick={() => setShowPreview(false)} className="p-2 hover:bg-gray-100 rounded-full text-gray-600"><ArrowLeft size={20}/></button>
+              <h3 className="font-bold text-gray-800">Preview Undangan - {currentLetter?.ref_number}</h3>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setShowPreview(false)} className="px-4 py-2 border rounded-lg font-bold text-sm text-gray-600 hover:bg-gray-50">Kembali</button>
+              <button onClick={() => generatePDF(currentLetter!, 'download')} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold text-sm flex items-center gap-2 shadow-lg"><Download size={16}/> Download PDF</button>
+            </div>
+          </div>
+          <div className="flex-1 bg-gray-500 rounded-b-2xl overflow-hidden flex justify-center">
+             <iframe src={pdfUrl} className="w-full max-w-4xl h-full shadow-2xl" title="PDF Preview"></iframe>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL FORM */}
       {showModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl w-full max-w-xl p-8 shadow-2xl max-h-[95vh] overflow-y-auto relative animate-in zoom-in duration-300">
-            <button onClick={() => setShowModal(false)} className="absolute right-6 top-6 text-gray-400 hover:text-red-600 transition-colors"><X size={24}/></button>
-            <h3 className="font-black text-xl mb-6 border-b pb-4 uppercase italic text-gray-800 tracking-tighter">Form Surat Undangan</h3>
-            
+          <div className="bg-white rounded-3xl w-full max-w-xl p-8 shadow-2xl max-h-[95vh] overflow-y-auto">
+            <h3 className="font-black text-xl mb-6 border-b pb-4 uppercase italic">Form Surat Undangan</h3>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="text-[10px] font-bold text-gray-400">NOMOR SURAT</label><input required className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl font-bold text-red-800 outline-none focus:ring-2 focus:ring-red-600" value={formData.ref_number} onChange={e => setFormData({...formData, ref_number: e.target.value})} placeholder="Contoh: 01/Und/..." /></div>
-                <div><label className="text-[10px] font-bold text-gray-400">TITIMANGSA (TGL KELUAR)</label><input type="date" className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl outline-none" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} /></div>
+                <div><label className="text-[10px] font-bold text-gray-400 uppercase">Nomor Surat</label><input required className="w-full p-3 bg-gray-50 border rounded-xl font-bold" value={formData.ref_number} onChange={e => setFormData({...formData, ref_number: e.target.value})} /></div>
+                <div><label className="text-[10px] font-bold text-gray-400 uppercase">Tgl Keluar (Titimangsa)</label><input type="date" className="w-full p-3 bg-gray-50 border rounded-xl" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} /></div>
               </div>
-              
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-[10px] font-bold text-gray-400">LAMPIRAN</label>
-                  <select className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl font-bold outline-none" value={formData.attachment} onChange={e => setFormData({...formData, attachment: e.target.value})}>
-                    <option value="-">-</option>
-                    <option value="1 (satu) bundel">1 (satu) bundel</option>
-                  </select>
-                </div>
-                <div><label className="text-[10px] font-bold text-gray-400">KEPADA YTH (TUJUAN)</label><input required className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl outline-none" placeholder="Seluruh Anggota..." value={formData.sender_receiver} onChange={e => setFormData({...formData, sender_receiver: e.target.value})} /></div>
+                <div><label className="text-[10px] font-bold text-gray-400 uppercase">Lampiran</label><select className="w-full p-3 bg-gray-50 border rounded-xl" value={formData.attachment} onChange={e => setFormData({...formData, attachment: e.target.value})}><option value="-">-</option><option value="1 (satu) bundel">1 (satu) bundel</option></select></div>
+                <div><label className="text-[10px] font-bold text-gray-400 uppercase">Tujuan (Kepada Yth)</label><input required className="w-full p-3 bg-gray-50 border rounded-xl" value={formData.sender_receiver} onChange={e => setFormData({...formData, sender_receiver: e.target.value})} /></div>
               </div>
-
-              <div><label className="text-[10px] font-bold text-gray-400">PERIHAL</label><input required className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl uppercase font-bold text-gray-700 outline-none focus:ring-2 focus:ring-red-600" placeholder="Contoh: Rapat Rutin Bulanan" value={formData.subject} onChange={e => setFormData({...formData, subject: e.target.value})} /></div>
-              
-              <div className="bg-blue-50/50 p-6 rounded-2xl space-y-4 border border-blue-100 shadow-inner">
-                <div className="flex items-center gap-1 text-blue-700 font-black text-[11px] uppercase tracking-wider underline">Detail Pelaksanaan Acara</div>
-                <div><label className="text-[10px] font-bold text-gray-500">HARI/TANGGAL</label><input required className="w-full p-2.5 bg-white border border-blue-100 rounded-lg outline-none focus:ring-2 focus:ring-blue-400" placeholder="Senin, 02 Februari 2026" value={formData.event_date} onChange={e => setFormData({...formData, event_date: e.target.value})} /></div>
-                <div><label className="text-[10px] font-bold text-gray-500">TEMPAT</label><input required className="w-full p-2.5 bg-white border border-blue-100 rounded-lg outline-none focus:ring-2 focus:ring-blue-400" placeholder="SDN 1 Kalijaga" value={formData.venue} onChange={e => setFormData({...formData, venue: e.target.value})} /></div>
-                <div><label className="text-[10px] font-bold text-gray-500">ACARA</label><input required className="w-full p-2.5 bg-white border border-blue-100 rounded-lg outline-none focus:ring-2 focus:ring-blue-400" placeholder="Pembahasan Seragam Pelantikan" value={formData.agenda} onChange={e => setFormData({...formData, agenda: e.target.value})} /></div>
+              <div><label className="text-[10px] font-bold text-gray-400 uppercase">Perihal</label><input required className="w-full p-3 bg-gray-50 border rounded-xl font-bold uppercase" value={formData.subject} onChange={e => setFormData({...formData, subject: e.target.value})} /></div>
+              <div className="bg-blue-50/50 p-6 rounded-2xl space-y-4 border border-blue-100">
+                <div className="text-blue-700 font-black text-[10px] uppercase underline">Pelaksanaan Acara</div>
+                <div><label className="text-[10px] font-bold text-gray-500">HARI/TANGGAL ACARA</label><input required className="w-full p-2.5 bg-white border border-blue-100 rounded-lg" placeholder="Senin, 27 Januari 2026" value={formData.event_date} onChange={e => setFormData({...formData, event_date: e.target.value})} /></div>
+                <div><label className="text-[10px] font-bold text-gray-500">TEMPAT</label><input required className="w-full p-2.5 bg-white border border-blue-100 rounded-lg" value={formData.venue} onChange={e => setFormData({...formData, venue: e.target.value})} /></div>
+                <div><label className="text-[10px] font-bold text-gray-500">ACARA</label><input required className="w-full p-2.5 bg-white border border-blue-100 rounded-lg" value={formData.agenda} onChange={e => setFormData({...formData, agenda: e.target.value})} /></div>
               </div>
-
-              <div className="flex gap-4 pt-6">
-                <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-4 border-2 border-gray-100 rounded-2xl font-black text-gray-400 hover:bg-gray-50 uppercase text-xs tracking-widest transition-all">BATAL</button>
-                <button type="submit" disabled={loading} className="flex-1 py-4 bg-red-800 text-white rounded-2xl font-black shadow-xl hover:bg-red-900 uppercase tracking-widest text-xs transition-all">
-                  {loading ? 'MENYIMPAN...' : 'SIMPAN ARSIP'}
-                </button>
-              </div>
+              <div className="flex gap-4 pt-6"><button type="button" onClick={() => setShowModal(false)} className="flex-1 py-4 border-2 rounded-2xl font-black text-gray-400 uppercase text-xs">Batal</button><button type="submit" disabled={loading} className="flex-1 py-4 bg-red-800 text-white rounded-2xl font-black shadow-xl uppercase text-xs">Simpan Arsip</button></div>
             </form>
           </div>
         </div>
