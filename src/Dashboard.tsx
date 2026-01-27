@@ -1,150 +1,262 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from './supabaseClient';
-import { 
-  Newspaper, Users, FileText, TrendingUp, 
-  ChevronLeft, ChevronRight, Calendar, Tag 
-} from 'lucide-react';
+import { Users, Wallet, Mail, Megaphone, Gift, MessageCircle, CreditCard, X, ArrowRight, QrCode, Copy, Check } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 const Dashboard = () => {
-  const [news, setNews] = useState<any[]>([]);
-  const [currentSlide, setCurrentSlide] = useState(0);
-  const [stats, setStats] = useState({ members: 0, letters: 0, newsCount: 0 });
+  const today = new Date();
+  
+  // State Data
+  const [members, setMembers] = useState<any[]>([]);
+  const [totalBalance, setTotalBalance] = useState(0); // State Saldo Dinamis
   const [loading, setLoading] = useState(true);
 
-  const fetchDashboardData = async () => {
-    setLoading(true);
-    // 1. Ambil 5 Berita/Info Terbaru untuk Slider
-    const { data: newsData } = await supabase
-      .from('news')
-      .select('*')
-      .order('date', { ascending: false })
-      .limit(5);
-    
-    // 2. Ambil Statistik Anggota dan Surat
-    const { count: mCount } = await supabase.from('members').select('*', { count: 'exact', head: true });
-    const { count: lCount } = await supabase.from('letters').select('*', { count: 'exact', head: true });
-    
-    setNews(newsData || []);
-    setStats({ 
-      members: mCount || 0, 
-      letters: lCount || 0, 
-      newsCount: newsData?.length || 0 
-    });
-    setLoading(false);
-  };
-
+  // 1. LOAD DATA ANGGOTA & KEUANGAN
   useEffect(() => {
-    fetchDashboardData();
+    // A. Load Anggota
+    const storedMembers = localStorage.getItem('pgri_members');
+    if (storedMembers) {
+      setMembers(JSON.parse(storedMembers));
+    } else {
+      setMembers([
+        { id: 1, name: 'DENDI SUPARMAN, S.Pd.SD', birthDate: '1985-01-01', phone: '6281234567890', status: 'PNS' },
+        { id: 2, name: 'JATU WAHYU WICAKSONO, M.Pd.', birthDate: '1988-02-02', phone: '6281234567891', status: 'PNS' },
+      ]);
+    }
+
+    // B. Hitung Saldo Kas dari Data Keuangan
+    const storedFinance = localStorage.getItem('pgri_finance');
+    if (storedFinance) {
+      const transactions = JSON.parse(storedFinance);
+      const balance = transactions.reduce((acc: number, curr: any) => {
+        return curr.type === 'income' ? acc + curr.amount : acc - curr.amount;
+      }, 0);
+      setTotalBalance(balance);
+    } else {
+      // Saldo Awal Dummy jika belum ada data
+      setTotalBalance(2500000);
+      localStorage.setItem('pgri_finance', JSON.stringify([
+        { id: 1, date: '2026-01-01', description: 'Saldo Awal Tahun 2026', amount: 2500000, type: 'income', category: 'Kas Awal' }
+      ]));
+    }
+
+    setLoading(false);
   }, []);
 
-  // Timer untuk geser banner otomatis setiap 5 detik
-  useEffect(() => {
-    if (news.length > 1) {
-      const timer = setInterval(() => {
-        setCurrentSlide((prev) => (prev === news.length - 1 ? 0 : prev + 1));
-      }, 5000);
-      return () => clearInterval(timer);
-    }
-  }, [news]);
+  // 2. LOGIKA ULANG TAHUN
+  const totalMembers = members.length; 
+  let birthdayMembers = members.filter(m => {
+    if (!m.birthDate) return false;
+    const dob = new Date(m.birthDate);
+    return dob.getDate() === today.getDate() && dob.getMonth() === today.getMonth();
+  });
 
-  const nextSlide = () => setCurrentSlide(currentSlide === news.length - 1 ? 0 : currentSlide + 1);
-  const prevSlide = () => setCurrentSlide(currentSlide === 0 ? news.length - 1 : currentSlide - 1);
+  if (birthdayMembers.length === 0) {
+    birthdayMembers = [{ id: 999, name: 'REKAN GURU (CONTOH)', birthDate: today.toISOString(), phone: '628123456789', status: 'PNS' }];
+  }
+
+  // State Modal
+  const [showModal, setShowModal] = useState(false);
+  const [selectedMember, setSelectedMember] = useState<any>(null);
+  const [amount, setAmount] = useState('50000');
+  const [paymentTab, setPaymentTab] = useState<'qris' | 'transfer'>('qris');
+  const [copiedText, setCopiedText] = useState<string | null>(null);
+
+  const accounts = {
+    bri: { name: 'BRI PGRI Ranting', number: '1234567890' },
+    dana: { name: 'Dana Bendahara', number: '081234567890' },
+    gopay: { name: 'GoPay Bendahara', number: '081234567890' }
+  };
+  
+  const recentNews = [
+    { id: 1, title: 'Rapat Persiapan HUT PGRI ke-79', date: '25 Jan 2026', excerpt: 'Diharapkan kehadiran seluruh pengurus ranting di Aula Kecamatan.', category: 'Kegiatan' },
+    { id: 2, title: 'Edaran Libur Awal Ramadhan 1447 H', date: '23 Jan 2026', excerpt: 'Kegiatan KBM diliburkan mulai tanggal 10-12 Maret 2026.', category: 'Pengumuman' },
+  ];
+
+  const sendWhatsApp = (name: string, phone: string) => {
+    const message = `Assalamu’alaikum ${name},%0A%0ASelamat Ulang Tahun! 🎂%0ABarakallah fii umrik.`;
+    window.open(`https://wa.me/${phone}?text=${message}`, '_blank');
+  };
+
+  const openGiftModal = (member: any) => {
+    setSelectedMember(member);
+    setShowModal(true);
+    setPaymentTab('qris');
+  };
+
+  const handleCopy = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedText(text);
+    setTimeout(() => setCopiedText(null), 2000);
+  };
+
+  // --- LOGIKA SIMPAN KE KEUANGAN ---
+  const handleGiftSubmit = () => {
+    const nominal = parseInt(amount);
+    const methodText = paymentTab === 'qris' ? 'Scan QRIS' : 'Transfer Manual';
+    
+    // 1. Buat Objek Transaksi Baru
+    const newTransaction = {
+      id: Date.now(),
+      date: new Date().toISOString().split('T')[0], // Format YYYY-MM-DD
+      description: `Titipan Kado Ultah ${selectedMember.name} (via ${methodText})`,
+      amount: nominal,
+      type: 'income', // Masuk ke Kas Sementara
+      category: 'Dana Sosial',
+      status: 'Menunggu Konfirmasi' // Status awal
+    };
+
+    // 2. Simpan ke LocalStorage
+    const currentData = JSON.parse(localStorage.getItem('pgri_finance') || '[]');
+    const updatedData = [newTransaction, ...currentData];
+    localStorage.setItem('pgri_finance', JSON.stringify(updatedData));
+
+    // 3. Update Saldo di Layar (Real-time update)
+    setTotalBalance(prev => prev + nominal);
+
+    // 4. Kirim WA ke Bendahara
+    const nomorBendahara = '628997773450';
+    const pesanKonfirmasi = `Halo Bendahara,%0A%0ASaya sudah transfer kado *Rp ${nominal.toLocaleString('id-ID')}* via *${methodText}*%0Auntuk ultah *${selectedMember.name}*.%0A%0AMohon dicek mutasi & catat di aplikasi. Terima kasih!`;
+    window.open(`https://wa.me/${nomorBendahara}?text=${pesanKonfirmasi}`, '_blank');
+    
+    setShowModal(false);
+    alert('Alhamdulillah! Data transaksi sudah tercatat otomatis di menu Keuangan.');
+  };
+
+  if (loading) return null;
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-700">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-black text-gray-800 uppercase italic tracking-tighter">Dashboard Administrasi</h1>
-          <p className="text-xs text-red-700 font-bold uppercase tracking-widest">PGRI Ranting Kalijaga</p>
+    <div className="space-y-8 relative animate-in fade-in duration-500">
+      
+      {/* BANNER ULANG TAHUN */}
+      <div className="bg-gradient-to-r from-pink-600 to-rose-600 rounded-2xl p-6 text-white shadow-lg shadow-pink-200 relative overflow-hidden">
+        <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-white opacity-10 rounded-full blur-xl"></div>
+        <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center gap-4">
+          <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm shadow-inner">
+            <Gift size={32} className="text-yellow-300 animate-bounce" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-xl font-bold mb-1">🎉 Ulang Tahun Hari Ini!</h3>
+            <p className="text-pink-100 text-sm mb-3">
+              {birthdayMembers[0]?.id === 999 
+                ? "(Mode Demo: Contoh tampilan kado ultah)" 
+                : "Mari kirim doa terbaik atau ikut patungan kado untuk rekan kita:"}
+            </p>
+            <div className="flex flex-wrap gap-3">
+              {birthdayMembers.map((m) => (
+                <div key={m.id} className="flex items-center gap-2 bg-white text-pink-700 pl-3 pr-1 py-1.5 rounded-full text-sm font-bold shadow-md transform hover:scale-105 transition-transform">
+                  <span className="uppercase text-xs tracking-wide">{m.name}</span>
+                  <button onClick={() => sendWhatsApp(m.name, m.phone)} className="bg-green-100 hover:bg-green-200 text-green-700 p-1.5 rounded-full transition-colors"><MessageCircle size={16} /></button>
+                  <button onClick={() => openGiftModal(m)} className="bg-yellow-100 hover:bg-yellow-200 text-yellow-700 p-1.5 rounded-full transition-colors flex items-center gap-1 px-2 border-2 border-yellow-200"><CreditCard size={16} /><span className="text-[10px] font-extrabold uppercase">Beri Kado</span></button>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* --- SLIDE BANNER (PENGGANTI INFO & BERITA STATIS) --- */}
-      {!loading && news.length > 0 ? (
-        <div className="relative h-[400px] w-full overflow-hidden rounded-[32px] shadow-2xl border-4 border-white">
-          {news.map((item, index) => (
-            <div
-              key={item.id}
-              className={`absolute inset-0 transition-all duration-1000 ease-in-out ${
-                index === currentSlide ? 'opacity-100 scale-100' : 'opacity-0 scale-105 pointer-events-none'
-              }`}
-            >
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent z-10" />
-              <img 
-                src={item.image_url || 'https://images.unsplash.com/photo-1524178232363-1fb2b075b655?q=80&w=2070'} 
-                className="h-full w-full object-cover"
-                alt={item.title}
-              />
-              
-              <div className="absolute bottom-0 left-0 right-0 p-8 md:p-12 z-20 text-white">
-                <span className="bg-red-600 px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest mb-4 inline-block shadow-lg">
-                  {item.category}
-                </span>
-                <h2 className="text-3xl md:text-4xl font-black uppercase leading-tight mb-4 max-w-3xl drop-shadow-md">
-                  {item.title}
-                </h2>
-                <div className="flex items-center gap-4 text-[10px] font-bold text-gray-200 uppercase tracking-widest">
-                  <span className="flex items-center gap-1"><Calendar size={12}/> {item.date}</span>
-                  <span className="flex items-center gap-1">Penulis: {item.author}</span>
+      {/* STATISTIK */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4 hover:shadow-md transition-shadow">
+          <div className="p-4 bg-blue-50 text-blue-700 rounded-xl"><Users size={32} /></div>
+          <div>
+            <p className="text-gray-500 text-xs font-bold uppercase tracking-wider">Total Anggota</p>
+            <h3 className="text-3xl font-bold text-gray-800">{totalMembers}</h3>
+            <Link to="/members" className="text-xs text-blue-600 font-bold flex items-center gap-1 mt-1 hover:underline">Lihat Detail <ArrowRight size={12} /></Link>
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4 hover:shadow-md transition-shadow">
+          <div className="p-4 bg-green-50 text-green-700 rounded-xl"><Wallet size={32} /></div>
+          <div>
+            <p className="text-gray-500 text-xs font-bold uppercase tracking-wider">Saldo Kas</p>
+            {/* SALDO SUDAH DINAMIS */}
+            <h3 className="text-3xl font-bold text-gray-800">Rp {totalBalance.toLocaleString('id-ID')}</h3>
+            <Link to="/finance" className="text-xs text-green-600 font-bold flex items-center gap-1 mt-1 hover:underline">Laporan Kas <ArrowRight size={12} /></Link>
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4 hover:shadow-md transition-shadow">
+          <div className="p-4 bg-orange-50 text-orange-700 rounded-xl"><Mail size={32} /></div>
+          <div>
+            <p className="text-gray-500 text-xs font-bold uppercase tracking-wider">Surat Masuk</p>
+            <h3 className="text-3xl font-bold text-gray-800">12</h3>
+            <Link to="/letters" className="text-xs text-orange-600 font-bold flex items-center gap-1 mt-1 hover:underline">Buka Arsip <ArrowRight size={12} /></Link>
+          </div>
+        </div>
+      </div>
+
+      {/* INFO BERITA */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+         <div className="flex justify-between items-center mb-6">
+            <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2"><Megaphone size={20} className="text-red-700" /> Info & Berita Terkini</h3>
+            <Link to="/info" className="text-sm text-red-700 font-bold hover:underline">Lihat Semua</Link>
+         </div>
+         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+           {recentNews.map(item => (
+             <div key={item.id} className="border border-gray-100 rounded-xl p-4 hover:border-red-100 hover:bg-red-50 transition-colors group">
+               <div className="flex justify-between items-start mb-2">
+                 <span className={`text-[10px] px-2 py-1 rounded font-bold uppercase tracking-wider ${item.category === 'Kegiatan' ? 'bg-blue-100 text-blue-700' : item.category === 'Pengumuman' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>{item.category}</span>
+                 <span className="text-xs text-gray-400 font-mono">{item.date}</span>
+               </div>
+               <h4 className="font-bold text-gray-800 mb-2 group-hover:text-red-700 line-clamp-2">{item.title}</h4>
+               <p className="text-xs text-gray-500 line-clamp-3 leading-relaxed">{item.excerpt}</p>
+             </div>
+           ))}
+         </div>
+      </div>
+
+      {/* MODAL BERI KADO */}
+      {showModal && selectedMember && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 backdrop-blur-md">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="bg-gradient-to-r from-red-800 to-red-900 p-4 flex justify-between items-center text-white">
+              <h3 className="font-bold flex items-center gap-2"><Gift size={20} className="text-yellow-400" /> Beri Kado Ultah</h3>
+              <button onClick={() => setShowModal(false)} className="text-white/80 hover:text-white bg-white/10 p-1 rounded-full"><X size={18} /></button>
+            </div>
+            
+            <div className="p-6">
+              <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-100 mb-6 text-sm text-yellow-800 text-center">
+                Untuk: <b>{selectedMember.name}</b>
+              </div>
+
+              <div className="mb-6">
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Pilih Nominal Kado</label>
+                <div className="grid grid-cols-4 gap-2">
+                  {['20000', '50000', '100000', '150000'].map((val) => (
+                    <button key={val} onClick={() => setAmount(val)} className={`py-2 rounded-lg text-xs font-bold border transition-all ${amount === val ? 'bg-red-700 text-white border-red-700' : 'bg-white text-gray-600 border-gray-200 hover:border-red-300'}`}>{parseInt(val) / 1000}k</button>
+                  ))}
                 </div>
               </div>
+
+              <div className="flex bg-gray-100 p-1 rounded-lg mb-4">
+                <button onClick={() => setPaymentTab('qris')} className={`flex-1 py-2 text-xs font-bold rounded-md flex items-center justify-center gap-2 transition-all ${paymentTab === 'qris' ? 'bg-white text-red-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><QrCode size={16} /> QRIS</button>
+                <button onClick={() => setPaymentTab('transfer')} className={`flex-1 py-2 text-xs font-bold rounded-md flex items-center justify-center gap-2 transition-all ${paymentTab === 'transfer' ? 'bg-white text-red-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><Wallet size={16} /> Transfer</button>
+              </div>
+
+              {paymentTab === 'qris' && (
+                <div className="text-center animate-in fade-in">
+                  <div className="border-2 border-dashed border-gray-300 rounded-xl p-4 inline-block bg-white">
+                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=KadoPGRIKalijaga" alt="QRIS" className="w-40 h-40 mix-blend-multiply opacity-90" />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">Scan pakai GoPay, OVO, Dana, atau Mobile Banking</p>
+                </div>
+              )}
+
+              {paymentTab === 'transfer' && (
+                <div className="space-y-3 animate-in fade-in">
+                  {[accounts.bri, accounts.dana, accounts.gopay].map((acc, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-3 border border-gray-200 rounded-xl hover:border-red-200 bg-white group">
+                      <div><p className="text-xs text-gray-400 font-medium uppercase">{acc.name}</p><p className="text-sm font-bold text-gray-800 font-mono tracking-wide">{acc.number}</p></div>
+                      <button onClick={() => handleCopy(acc.number)} className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-all">{copiedText === acc.number ? <Check size={18} className="text-green-600" /> : <Copy size={18} />}</button>
+                    </div>
+                  ))}
+                  {copiedText && <p className="text-center text-xs text-green-600 font-bold animate-pulse">Nomor berhasil disalin!</p>}
+                </div>
+              )}
+
+              <button onClick={handleGiftSubmit} className="w-full bg-green-600 hover:bg-green-700 text-white py-3.5 rounded-xl font-bold flex justify-center items-center gap-2 mt-6 shadow-lg shadow-green-100 hover:shadow-xl transition-all"><MessageCircle size={18} /> Konfirmasi Kado ke WA</button>
             </div>
-          ))}
-
-          {/* Navigasi Manual */}
-          <button onClick={prevSlide} className="absolute left-6 top-1/2 -translate-y-1/2 z-30 p-3 rounded-full bg-white/20 backdrop-blur-md text-white hover:bg-white/40 transition-all shadow-xl">
-            <ChevronLeft size={24} />
-          </button>
-          <button onClick={nextSlide} className="absolute right-6 top-1/2 -translate-y-1/2 z-30 p-3 rounded-full bg-white/20 backdrop-blur-md text-white hover:bg-white/40 transition-all shadow-xl">
-            <ChevronRight size={24} />
-          </button>
-
-          {/* Indikator Titik Bawah */}
-          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex gap-2">
-            {news.map((_, i) => (
-              <div key={i} className={`h-1.5 rounded-full transition-all duration-500 ${i === currentSlide ? 'w-10 bg-white' : 'w-2 bg-white/40'}`} />
-            ))}
           </div>
-        </div>
-      ) : (
-        <div className="h-[400px] w-full bg-gray-100 rounded-[32px] flex items-center justify-center border-2 border-dashed text-gray-400 italic font-bold">
-           Belum ada berita untuk ditampilkan di Banner.
         </div>
       )}
-
-      {/* --- KARTU STATISTIK (DIPERTAHANKAN) --- */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-xl transition-all group">
-          <div className="flex items-center justify-between mb-4">
-            <div className="p-3 bg-red-50 rounded-2xl text-red-600 group-hover:bg-red-600 group-hover:text-white transition-all shadow-inner">
-              <Users size={24} />
-            </div>
-            <TrendingUp size={20} className="text-green-500" />
-          </div>
-          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Anggota Ranting</p>
-          <h4 className="text-4xl font-black text-gray-800 tracking-tighter">{stats.members}</h4>
-        </div>
-
-        <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-xl transition-all group">
-          <div className="flex items-center justify-between mb-4">
-            <div className="p-3 bg-blue-50 rounded-2xl text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-all shadow-inner">
-              <FileText size={24} />
-            </div>
-          </div>
-          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Total Arsip Surat</p>
-          <h4 className="text-4xl font-black text-gray-800 tracking-tighter">{stats.letters}</h4>
-        </div>
-
-        <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-xl transition-all group">
-          <div className="flex items-center justify-between mb-4">
-            <div className="p-3 bg-teal-50 rounded-2xl text-teal-600 group-hover:bg-teal-600 group-hover:text-white transition-all shadow-inner">
-              <Newspaper size={24} />
-            </div>
-          </div>
-          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Berita Terbit</p>
-          <h4 className="text-4xl font-black text-gray-800 tracking-tighter">{stats.newsCount}</h4>
-        </div>
-      </div>
     </div>
   );
 };
