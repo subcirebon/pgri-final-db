@@ -3,7 +3,7 @@ import { useOutletContext } from 'react-router-dom';
 import { supabase } from './supabaseClient';
 import { 
   Search, UserPlus, Phone, Edit, Trash2, 
-  FileSpreadsheet, Loader2, CheckCircle
+  FileSpreadsheet, Loader2, CheckCircle, Mail, Key, User
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -20,6 +20,8 @@ interface Member {
   teacher_type: string;
   phone: string;
   email: string;
+  username?: string;
+  password?: string;
   account_status: string; 
 }
 
@@ -41,7 +43,7 @@ const Members = () => {
     npa: '', name: '', nip: '', 
     birth_place: '', birth_date: '', gender: 'Laki-laki',
     school: '', status: 'PNS', teacher_type: 'Guru Kelas', 
-    phone: '', email: ''
+    phone: '', email: '', username: '', password: ''
   });
 
   const fetchMembers = async () => {
@@ -107,7 +109,7 @@ const Members = () => {
 
   const exportToExcel = () => {
     const dataToExport = filteredMembers.map(m => ({
-      'Nama': m.name, 'NIP': m.nip, 'L/P': m.gender, 'Sekolah': m.school, 'Status': m.status
+      'Nama': m.name, 'NIP': m.nip, 'L/P': m.gender, 'Sekolah': m.school, 'Status': m.status, 'Email': m.email
     }));
     const ws = XLSX.utils.json_to_sheet(dataToExport);
     const wb = XLSX.utils.book_new();
@@ -128,7 +130,7 @@ const Members = () => {
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold text-gray-800 uppercase">Database Anggota</h1>
         {isAdmin && (
-          <button onClick={() => { setIsEditing(false); setFormData({npa: '', name: '', nip: '', birth_place: '', birth_date: '', gender: 'Laki-laki', school: '', status: 'PNS', teacher_type: 'Guru Kelas', phone: '', email: ''}); setShowModal(true); }} className="bg-red-800 text-white px-4 py-2 rounded-lg font-bold">
+          <button onClick={() => { setIsEditing(false); setFormData({npa: '', name: '', nip: '', birth_place: '', birth_date: '', gender: 'Laki-laki', school: '', status: 'PNS', teacher_type: 'Guru Kelas', phone: '', email: '', username: '', password: ''}); setShowModal(true); }} className="bg-red-800 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2">
             <UserPlus size={16} /> Tambah Anggota
           </button>
         )}
@@ -139,7 +141,16 @@ const Members = () => {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
           <input type="text" placeholder="Cari Nama/NIP..." className="w-full pl-10 pr-4 py-2 border rounded-lg outline-none" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          {/* Filter Jenis Guru */}
+          <select className="p-2 border rounded-lg text-xs font-bold" value={filterType} onChange={(e) => setFilterType(e.target.value)}>
+            <option value="Semua">Guru: Semua</option>
+            <option value="Guru Kelas">Guru Kelas</option>
+            <option value="Guru Mapel">Guru Mapel</option>
+            <option value="Guru Agama">Guru Agama</option>
+            <option value="Guru PJOK">Guru PJOK</option>
+          </select>
+          {/* Filter Status Pegawai */}
           <select className="p-2 border rounded-lg text-xs font-bold" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
             <option value="Semua">Status: Semua</option>
             <option value="PNS">PNS</option><option value="PPPK">PPPK</option><option value="Honorer">Honorer</option>
@@ -156,8 +167,8 @@ const Members = () => {
             <table className="w-full text-left text-sm uppercase">
               <thead className="bg-gray-50 border-b font-bold text-gray-600 text-[10px]">
                 <tr>
-                  <th className="p-4">Identitas</th>
-                  <th className="p-4 text-center">Status & Akun</th>
+                  <th className="p-4">Identitas & Kontak</th>
+                  <th className="p-4 text-center">Jabatan & Status</th>
                   <th className="p-4 text-right">Aksi</th>
                 </tr>
               </thead>
@@ -167,25 +178,31 @@ const Members = () => {
                     <td className="p-4">
                       <div className="font-bold text-gray-800">{m.name}</div>
                       <div className="text-[10px] text-gray-500">NIP: {m.nip || '-'} | NPA: {m.npa || '-'}</div>
+                      <div className="text-[10px] text-blue-600 lowercase flex items-center gap-1 mt-1 font-semibold">
+                        <Mail size={10} /> {m.email || 'tidak ada email'}
+                      </div>
                     </td>
                     <td className="p-4 text-center">
                       <div className="flex flex-col gap-1 items-center">
-                        <span className="px-2 py-0.5 rounded text-[9px] font-bold border">{m.status}</span>
-                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${m.account_status === 'Active' ? 'bg-teal-100 text-teal-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                          {m.account_status === 'Active' ? 'Aktif' : 'Menunggu'}
-                        </span>
+                        <span className="font-bold text-[10px] text-gray-600">{m.teacher_type}</span>
+                        <div className="flex gap-1">
+                          <span className="px-2 py-0.5 rounded text-[9px] font-bold border bg-gray-50">{m.status}</span>
+                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${m.account_status === 'Active' ? 'bg-teal-100 text-teal-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                            {m.account_status === 'Active' ? 'Aktif' : 'Menunggu'}
+                          </span>
+                        </div>
                       </div>
                     </td>
                     <td className="p-4 text-right">
                       <div className="flex justify-end gap-1">
-                        <a href={`https://wa.me/${m.phone}`} target="_blank" className="p-1.5 text-green-600"><Phone size={16} /></a>
+                        <a href={`https://wa.me/${m.phone}`} target="_blank" className="p-1.5 text-green-600 hover:bg-green-50 rounded"><Phone size={16} /></a>
                         {isAdmin && (
                           <>
                             {m.account_status !== 'Active' && (
-                              <button onClick={() => handleApprove(m.id)} className="p-1.5 text-teal-600"><CheckCircle size={16} /></button>
+                              <button onClick={() => handleApprove(m.id)} className="p-1.5 text-teal-600 hover:bg-teal-50 rounded" title="Verifikasi Anggota"><CheckCircle size={16} /></button>
                             )}
-                            <button onClick={() => { setFormData({...m} as any); setEditId(m.id); setIsEditing(true); setShowModal(true); }} className="p-1.5 text-indigo-600"><Edit size={16} /></button>
-                            <button onClick={() => handleDeleteMain(m.id)} className="p-1.5 text-red-600"><Trash2 size={16} /></button>
+                            <button onClick={() => { setFormData({...m} as any); setEditId(m.id); setIsEditing(true); setShowModal(true); }} className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded"><Edit size={16} /></button>
+                            <button onClick={() => handleDeleteMain(m.id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded"><Trash2 size={16} /></button>
                           </>
                         )}
                       </div>
@@ -199,32 +216,61 @@ const Members = () => {
       </div>
 
       {showModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl w-full max-w-lg p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <h3 className="font-bold text-lg mb-4 uppercase border-b pb-2">{isEditing ? 'Edit Data' : 'Tambah Anggota'}</h3>
-            <form onSubmit={handleDirectAddSubmit} className="space-y-3 text-sm">
-               <div><label className="font-bold text-xs text-gray-500 uppercase">Nama Lengkap</label><input required className="w-full p-2 border rounded uppercase" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} /></div>
+            <h3 className="font-bold text-lg mb-4 uppercase border-b pb-2 text-gray-800">{isEditing ? 'Edit Data Anggota' : 'Tambah Anggota Baru'}</h3>
+            <form onSubmit={handleDirectAddSubmit} className="space-y-4 text-sm">
+               {/* Informasi Login */}
+               <div className="bg-gray-50 p-3 rounded-xl border border-gray-100 space-y-3">
+                 <p className="text-[10px] font-bold text-gray-400 uppercase">Informasi Akun Login</p>
+                 <div className="grid grid-cols-2 gap-3">
+                   <div>
+                     <label className="font-bold text-[10px] text-gray-500 uppercase flex items-center gap-1"><User size={10}/> Username</label>
+                     <input required className="w-full p-2 border rounded bg-white" placeholder="username_anggota" value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} />
+                   </div>
+                   <div>
+                     <label className="font-bold text-[10px] text-gray-500 uppercase flex items-center gap-1"><Key size={10}/> Password</label>
+                     <input required type="password" className="w-full p-2 border rounded bg-white" placeholder="******" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} />
+                   </div>
+                 </div>
+               </div>
+
+               <div><label className="font-bold text-xs text-gray-500 uppercase">Nama Lengkap</label><input required className="w-full p-2 border rounded uppercase font-semibold" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} /></div>
+               
                <div className="grid grid-cols-2 gap-3">
-                 <div><label className="font-bold text-xs text-gray-500 uppercase">NPA</label><input className="w-full p-2 border rounded" value={formData.npa} onChange={e => setFormData({...formData, npa: e.target.value})} /></div>
+                 <div><label className="font-bold text-xs text-gray-500 uppercase">NPA (Jika ada)</label><input className="w-full p-2 border rounded" value={formData.npa} onChange={e => setFormData({...formData, npa: e.target.value})} /></div>
                  <div><label className="font-bold text-xs text-gray-500 uppercase">NIP</label><input className="w-full p-2 border rounded" value={formData.nip} onChange={e => setFormData({...formData, nip: e.target.value})} /></div>
                </div>
+               
                <div className="grid grid-cols-3 gap-3">
                  <div><label className="font-bold text-xs text-gray-500 uppercase">Kota Lahir</label><input className="w-full p-2 border rounded" value={formData.birth_place} onChange={e => setFormData({...formData, birth_place: e.target.value})} /></div>
                  <div><label className="font-bold text-xs text-gray-500 uppercase">Tgl Lahir</label><input type="date" className="w-full p-2 border rounded" value={formData.birth_date} onChange={e => setFormData({...formData, birth_date: e.target.value})} /></div>
                  <div><label className="font-bold text-xs text-gray-500 uppercase">Gender</label><select className="w-full p-2 border rounded" value={formData.gender} onChange={e => setFormData({...formData, gender: e.target.value})}><option value="Laki-laki">Laki-laki</option><option value="Perempuan">Perempuan</option></select></div>
                </div>
-               <div><label className="font-bold text-xs text-gray-500 uppercase">Unit Kerja</label><input required className="w-full p-2 border rounded uppercase" value={formData.school} onChange={e => setFormData({...formData, school: e.target.value})} /></div>
+
+               <div><label className="font-bold text-xs text-gray-500 uppercase">Unit Kerja (Sekolah)</label><input required className="w-full p-2 border rounded uppercase font-semibold" value={formData.school} onChange={e => setFormData({...formData, school: e.target.value})} /></div>
+               
                <div className="grid grid-cols-2 gap-3">
-                  <div><label className="font-bold text-xs text-gray-500 uppercase">Status</label><select className="p-2 border rounded" value={formData.status} onChange={e => setFormData({...formData, status: e.target.value as any})}><option value="PNS">PNS</option><option value="PPPK">PPPK</option><option value="Honorer">Honorer</option></select></div>
-                  <div><label className="font-bold text-xs text-gray-500 uppercase">Jabatan</label><input className="w-full p-2 border rounded" value={formData.teacher_type} onChange={e => setFormData({...formData, teacher_type: e.target.value})} /></div>
+                  <div><label className="font-bold text-xs text-gray-500 uppercase">Status Pegawai</label><select className="p-2 border rounded w-full" value={formData.status} onChange={e => setFormData({...formData, status: e.target.value as any})}><option value="PNS">PNS</option><option value="PPPK">PPPK</option><option value="Honorer">Honorer</option></select></div>
+                  <div><label className="font-bold text-xs text-gray-500 uppercase">Jenis Guru</label>
+                    <select className="p-2 border rounded w-full" value={formData.teacher_type} onChange={e => setFormData({...formData, teacher_type: e.target.value})}>
+                      <option value="Guru Kelas">Guru Kelas</option>
+                      <option value="Guru Mapel">Guru Mapel</option>
+                      <option value="Guru Agama">Guru Agama</option>
+                      <option value="Guru PJOK">Guru PJOK</option>
+                      <option value="Kepala Sekolah">Kepala Sekolah</option>
+                    </select>
+                  </div>
                </div>
+
                <div className="grid grid-cols-2 gap-3 pb-4">
-                  <div><label className="font-bold text-xs text-gray-500 uppercase">No HP</label><input className="w-full p-2 border rounded" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} /></div>
-                  <div><label className="font-bold text-xs text-gray-500 uppercase">Email</label><input type="email" className="w-full p-2 border rounded" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} /></div>
+                  <div><label className="font-bold text-xs text-gray-500 uppercase">No WhatsApp</label><input required className="w-full p-2 border rounded" placeholder="08xxxx" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} /></div>
+                  <div><label className="font-bold text-xs text-gray-500 uppercase">Email</label><input type="email" required className="w-full p-2 border rounded" placeholder="email@gmail.com" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} /></div>
                </div>
-               <div className="flex gap-2">
-                 <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-3 border rounded-xl font-bold">Batal</button>
-                 <button type="submit" disabled={loading} className="flex-1 py-3 bg-red-800 text-white rounded-xl font-bold">{loading ? 'Proses...' : 'Simpan'}</button>
+
+               <div className="flex gap-2 pt-2 border-t">
+                 <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-3 border rounded-xl font-bold text-gray-500 hover:bg-gray-50 transition-colors">Batal</button>
+                 <button type="submit" disabled={loading} className="flex-1 py-3 bg-red-800 text-white rounded-xl font-bold shadow-lg hover:bg-red-900 transition-all">{loading ? 'Proses...' : 'Simpan Anggota'}</button>
                </div>
             </form>
           </div>
