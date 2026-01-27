@@ -14,7 +14,7 @@ interface Member {
   nip: string;
   birth_place: string;
   birth_date: string;
-  gender: string; // Tambahan Baru
+  gender: string;
   school: string;
   status: 'PNS' | 'PPPK' | 'Honorer';
   teacher_type: string;
