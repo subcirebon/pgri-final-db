@@ -1,80 +1,109 @@
-import React from 'react';
-import { Outlet, Link, useLocation } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useOutletContext, Link } from 'react-router-dom';
+import { supabase } from './supabaseClient';
 import { 
-  LayoutDashboard, Users, Wallet, Mail, 
-  Megaphone, ShieldAlert, HeartHandshake, 
-  LogOut, UserCircle 
+  Users, Wallet, Mail, Megaphone, Loader2, Camera, User as UserIcon
 } from 'lucide-react';
 
-// Terima props userName dan userRole dari App.tsx
-interface LayoutProps {
-  onLogout: () => void;
-  userRole: string;
-  userName: string;
-}
+const Dashboard = () => {
+  // Ambil data dari Layout
+  const { userName, userRole } = useOutletContext<{ userName: string, userRole: string }>();
+  
+  const [stats, setStats] = useState({ members: 0, balance: 0, letters: 0 });
+  const [news, setNews] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [profileUrl, setProfileUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
 
-const Layout = ({ onLogout, userRole, userName }: LayoutProps) => {
-  const location = useLocation();
+  const fetchData = async () => {
+    try {
+      // Ambil Statistik
+      const { count: mCount } = await supabase.from('members').select('*', { count: 'exact', head: true });
+      const { count: lCount } = await supabase.from('letters').select('*', { count: 'exact', head: true }).eq('type', 'MASUK');
+      const { data: financeData } = await supabase.from('finance').select('amount, type');
+      const balance = financeData?.reduce((acc, curr) => curr.type === 'income' ? acc + curr.amount : acc - curr.amount, 0) || 0;
 
-  const menuItems = [
-    { path: '/', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
-    { path: '/members', label: 'Anggota', icon: <Users size={20} /> },
-    { path: '/finance', label: 'Keuangan', icon: <Wallet size={20} /> },
-    { path: '/letters', label: 'Surat', icon: <Mail size={20} /> },
-    { path: '/info', label: 'Info & Berita', icon: <Megaphone size={20} /> },
-  ];
+      // Ambil Berita
+      const { data: newsData } = await supabase.from('news').select('*').order('date', { ascending: false }).limit(4);
+
+      // Ambil Foto Profil dari Database (Gunakan nama yang login)
+      if (userName) {
+        const { data: memberData } = await supabase.from('members').select('avatar_url').eq('name', userName).maybeSingle();
+        if (memberData) setProfileUrl(memberData.avatar_url);
+      }
+
+      setStats({ members: mCount || 0, balance, letters: lCount || 0 });
+      setNews(newsData || []);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false); // Pastikan loading berhenti apapun yang terjadi
+    }
+  };
+
+  useEffect(() => { 
+    fetchData(); 
+  }, [userName]);
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    try {
+      setUploading(true);
+      const file = e.target.files?.[0];
+      if (!file || !userName) return;
+
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${userName.replace(/\s+/g, '_')}_${Date.now()}.${fileExt}`;
+      const filePath = `avatars/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, file);
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
+      const publicUrl = data.publicUrl;
+
+      // Update Permanen ke Database
+      await supabase.from('members').update({ avatar_url: publicUrl }).eq('name', userName);
+
+      setProfileUrl(publicUrl);
+      alert('Foto Profil Berhasil Disimpan Permanen!');
+    } catch (error: any) {
+      alert('Gagal Update: ' + error.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-red-800" size={48} /></div>;
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
-      {/* SIDEBAR */}
-      <aside className="w-64 bg-white border-r border-gray-100 flex flex-col sticky top-0 h-screen">
-        <div className="p-6 border-b border-gray-50">
-          <div className="flex items-center gap-3">
-            <div className="bg-red-800 p-2 rounded-xl">
-              <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2a/Persatuan_Guru_Republik_Indonesia.png/500px-Persatuan_Guru_Republik_Indonesia.png" className="w-6 h-6 object-contain" alt="Logo" />
-            </div>
-            <div>
-              <h1 className="text-sm font-black text-gray-800 uppercase leading-tight">PGRI Kalijaga</h1>
-              <p className="text-[9px] font-bold text-red-600 uppercase tracking-widest">Administrasi</p>
-            </div>
+    <div className="space-y-8 animate-in fade-in duration-700">
+      {/* HEADER PROFIL DINAMIS */}
+      <div className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm flex items-center gap-6">
+        <div className="relative group">
+          <div className="w-20 h-20 rounded-full border-4 border-red-50 overflow-hidden bg-gray-100 flex items-center justify-center shadow-inner">
+            {profileUrl ? <img src={profileUrl} className="w-full h-full object-cover" alt="Profile" /> : <UserIcon size={32} className="text-gray-300" />}
           </div>
+          <label className="absolute bottom-0 right-0 bg-red-800 text-white p-2 rounded-full cursor-pointer shadow-lg hover:bg-red-900 transition-all">
+            {uploading ? <Loader2 size={14} className="animate-spin" /> : <Camera size={14} />}
+            <input type="file" className="hidden" accept="image/*" onChange={handleAvatarUpload} disabled={uploading} />
+          </label>
         </div>
-
-        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
-          {menuItems.map((item) => (
-            <Link
-              key={item.path}
-              to={item.path}
-              className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all ${
-                location.pathname === item.path
-                  ? 'bg-red-50 text-red-800 shadow-sm'
-                  : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'
-              }`}
-            >
-              {item.icon}
-              {item.label}
-            </Link>
-          ))}
-        </nav>
-
-        <div className="p-4 border-t border-gray-50">
-          <button
-            onClick={onLogout}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold text-red-600 hover:bg-red-50 transition-all"
-          >
-            <LogOut size={20} />
-            Keluar Aplikasi
-          </button>
+        <div>
+          <h1 className="text-2xl font-black text-gray-800 uppercase italic">Selamat Datang, <span className="text-red-800">{userName || 'GURU'}</span></h1>
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">PGRI Ranting Kalijaga • {userRole}</p>
         </div>
-      </aside>
+      </div>
 
-      {/* MAIN CONTENT */}
-      <main className="flex-1 p-8">
-        {/* OPER DATA KE DASHBOARD LEWAT OUTLET CONTEXT */}
-        <Outlet context={{ userRole, userName }} />
-      </main>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Statistik di sini */}
+        <div className="bg-white p-7 rounded-[32px] border border-gray-100 shadow-sm">
+          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Saldo Kas Aktual</p>
+          <h3 className="text-4xl font-black text-gray-800 tracking-tighter">Rp {stats.balance.toLocaleString('id-ID')}</h3>
+        </div>
+        {/* ... tambahkan kartu statistik lainnya ... */}
+      </div>
     </div>
   );
 };
 
-export default Layout;
+export default Dashboard;
