@@ -93,7 +93,7 @@ const Layout = ({ onLogout, userRole }: { onLogout: () => void, userRole: string
              <button onClick={toggleSidebar} className="md:hidden p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
                 <Menu size={24} />
              </button>
-             <h2 className="font-bold text-gray-700 text-sm md:text-lg">Selamat Datang, <span className="text-red-700 uppercase">Bapak/Ibu Guru Hebat!</span></h2>
+             <h2 className="font-bold text-gray-700 text-sm md:text-lg">Selamat Datang, <span className="text-red-700 uppercase">Bapak & Ibu Guru Hebat!</span></h2>
           </div>
 
           {/* --- AREA PROFIL (INTERAKTIF) --- */}
