@@ -114,12 +114,12 @@ const Dashboard = () => {
           <div className="relative z-10 flex flex-col md:flex-row items-center gap-6">
             <Gift size={40} className="text-yellow-300 animate-bounce" />
             <div className="flex-1 text-center md:text-left">
-              <h3 className="text-xl font-black uppercase italic tracking-wider">Keluarga PGRI Berulang Tahun!</h3>
+              <h3 className="text-xl font-black capitalize aeac word italic tracking-wider">Rekan Seperjuangan Berulang Tahun!</h3>
               <div className="flex flex-wrap justify-center md:justify-start gap-3 mt-4">
                 {birthdays.map((m) => (
                   <div key={m.id} className="flex items-center gap-3 bg-white text-pink-700 px-4 py-2 rounded-2xl text-xs font-black shadow-lg">
                     <span className="uppercase">{m.name}</span>
-                    <button onClick={() => window.open(`https://wa.me/${m.phone}?text=Selamat Ulang Tahun!`, '_blank')} className="text-green-600 hover:scale-110 transition-transform"><MessageCircle size={18} /></button>
+                    <button onClick={() => window.open(`https://wa.me/${m.phone}?text=Selamat Ulang Tahun! Semoga USia, Rizki dan Kesehatanmu Diberkahi Tuhan`, '_blank')} className="text-green-600 hover:scale-110 transition-transform"><MessageCircle size={18} /></button>
                     <button onClick={() => { setSelectedMember(m); setShowModal(true); }} className="bg-yellow-400 text-yellow-900 px-3 py-1 rounded-xl text-[10px] flex items-center gap-1 hover:bg-yellow-500 transition-all font-bold"><CreditCard size={14} /> KADO</button>
                   </div>
                 ))}
