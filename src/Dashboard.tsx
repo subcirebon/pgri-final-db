@@ -66,8 +66,8 @@ const Dashboard = () => {
               <Gift size={40} className="text-yellow-300" />
             </div>
             <div className="flex-1 text-center md:text-left">
-              <h3 className="text-xl font-black uppercase italic tracking-wider">Keluarga PGRI Berulang Tahun!</h3>
-              <p className="text-pink-100 text-xs font-bold mb-4 uppercase">Mari kirimkan doa dan kado terbaik untuk rekan kita hari ini:</p>
+              <h3 className="text-xl font-black capitalize each word italic tracking-wider">Saudara Seperjuangan Berulang Tahun!</h3>
+              <p className="text-pink-100 text-xs font-bold mb-4 uppercase">Mari kirimkan doa dan kado terbaik untuk saudara kita hari ini:</p>
               <div className="flex flex-wrap justify-center md:justify-start gap-3">
                 {birthdays.map((m) => (
                   <div key={m.id} className="flex items-center gap-3 bg-white text-pink-700 px-4 py-2 rounded-2xl text-xs font-black shadow-lg">
