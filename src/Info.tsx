@@ -1,106 +1,210 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Newspaper, Calendar, User, Tag, Plus, Search, ChevronRight, X, Save, Upload } from 'lucide-react';
+import { supabase } from './supabaseClient';
+import { 
+  Search, Plus, Newspaper, Trash2, Edit, 
+  Calendar, Tag, Loader2, Megaphone, Bookmark
+} from 'lucide-react';
 
-interface NewsItem { id: number; title: string; date: string; author: string; category: string; content: string; fullContent: string; image: string; }
+interface NewsItem {
+  id: number;
+  date: string;
+  title: string;
+  content: string;
+  category: 'Berita' | 'Pengumuman' | 'Agenda';
+  author: string;
+}
 
-const Info = () => {
+const News = () => {
   const { userRole } = useOutletContext<{ userRole: string }>();
-  // HAK AKSES: Hanya Admin/Super yang bisa CREATE
-  const canCreate = userRole === 'super_admin' || userRole === 'admin';
+  const isAdmin = userRole === 'super_admin' || userRole === 'admin';
 
-  // DATA DUMMY DEFAULT (Agar User selalu melihat berita saat login)
-  const [newsList, setNewsList] = useState<NewsItem[]>([
-    {
-      id: 1, title: "Pendaftaran PPG Daljab 2026", date: "2026-01-24", author: "Admin Cabang", category: "Kedinasan",
-      content: "Kemendikbudristek resmi membuka pendaftaran PPG Daljab. Segera cek SIMPKB.",
-      fullContent: "Kemendikbudristek resmi membuka pendaftaran PPG Daljab Angkatan I. Cek SIMPKB masing-masing.",
-      image: "https://images.unsplash.com/photo-1434030216411-0b793f4b4173?auto=format&fit=crop&q=80&w=400"
-    },
-    {
-      id: 2, title: "Rapat Kerja Ranting PGRI", date: "2026-01-20", author: "Sekretaris", category: "Kegiatan PGRI",
-      content: "Pengurus ranting menyusun program kerja tahun 2026.",
-      fullContent: "Bertempat di SDN Kalijaga Permai, rapat kerja menghasilkan 5 program unggulan.",
-      image: "https://images.unsplash.com/photo-1544531586-fde5298cdd40?auto=format&fit=crop&q=80&w=400"
-    }
-  ]);
-
+  const [news, setNews] = useState<NewsItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('Semua');
-  const [showModal, setShowModal] = useState(false);
-  const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null);
-  const [formData, setFormData] = useState({ title: '', date: '', category: 'Pengumuman', fullContent: '', image: '' });
 
-  const filteredNews = newsList.filter(item => {
-    const matchSearch = item.title.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchCategory = filterCategory === 'Semua' || item.category === filterCategory;
-    return matchSearch && matchCategory;
+  const [showModal, setShowModal] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editId, setEditId] = useState<number | null>(null);
+
+  const [formData, setFormData] = useState({
+    date: new Date().toISOString().split('T')[0],
+    title: '',
+    content: '',
+    category: 'Berita' as 'Berita' | 'Pengumuman' | 'Agenda',
+    author: 'Admin Ranting'
   });
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setFormData({ ...formData, image: URL.createObjectURL(e.target.files[0]) });
+  const fetchNews = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('news')
+      .select('*')
+      .order('date', { ascending: false });
+
+    if (error) console.error(error);
+    else setNews(data || []);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchNews();
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+
+    let error;
+    if (isEditing && editId !== null) {
+      const res = await supabase.from('news').update(formData).eq('id', editId);
+      error = res.error;
+    } else {
+      const res = await supabase.from('news').insert([formData]);
+      error = res.error;
+    }
+
+    if (!error) {
+      alert(isEditing ? 'Berita diperbarui!' : 'Berita berhasil diterbitkan!');
+      fetchNews();
+      setShowModal(false);
+    } else {
+      alert('Gagal menyimpan: ' + error.message);
+    }
+    setLoading(false);
+  };
+
+  const handleDelete = async (id: number) => {
+    if (window.confirm('Hapus berita ini?')) {
+      const { error } = await supabase.from('news').delete().eq('id', id);
+      if (!error) fetchNews();
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const newItem: NewsItem = {
-      id: Date.now(), title: formData.title, date: formData.date, author: "Admin", category: formData.category as any,
-      content: formData.fullContent.substring(0, 100) + "...", fullContent: formData.fullContent,
-      image: formData.image || "https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&q=80&w=400"
-    };
-    setNewsList([newItem, ...newsList]);
-    setShowModal(false);
-  };
+  const filteredNews = news.filter(n => {
+    const matchesSearch = n.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          n.content.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory = filterCategory === 'Semua' || n.category === filterCategory;
+    return matchesSearch && matchesCategory;
+  });
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div><h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2"><Newspaper className="text-red-700"/> Info & Berita</h1></div>
-        
-        {/* TOMBOL BUAT BERITA: HANYA MUNCUL UNTUK ADMIN/SUPER */}
-        {canCreate && (
-          <button onClick={() => setShowModal(true)} className="bg-red-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-red-800 shadow-md">
-            <Plus size={18} /> Buat Berita Baru
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800 uppercase italic">Info & Berita Ranting</h1>
+          <p className="text-xs text-red-700 font-bold">Informasi Terkini PGRI Kalijaga</p>
+        </div>
+        {isAdmin && (
+          <button onClick={() => { setIsEditing(false); setFormData({date: new Date().toISOString().split('T')[0], title: '', content: '', category: 'Berita', author: 'Admin Ranting'}); setShowModal(true); }} className="bg-red-800 text-white px-4 py-2 rounded-xl font-bold shadow-lg flex items-center gap-2 hover:bg-red-900 transition-all">
+            <Plus size={16} /> Terbitkan Berita
           </button>
         )}
       </div>
 
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-4 justify-between items-center sticky top-0 z-10">
-        <div className="flex gap-2 overflow-x-auto w-full md:w-auto pb-2 md:pb-0">
-          {['Semua', 'Kedinasan', 'Kegiatan PGRI', 'Lomba & Prestasi', 'Pengumuman'].map((cat) => (
-            <button key={cat} onClick={() => setFilterCategory(cat)} className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all ${filterCategory === cat ? 'bg-red-700 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{cat}</button>
-          ))}
+      {/* TOOLBAR */}
+      <div className="bg-white p-4 rounded-2xl shadow-sm border flex flex-col md:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+          <input type="text" placeholder="Cari berita atau pengumuman..." className="w-full pl-10 pr-4 py-2 border rounded-xl outline-none focus:ring-2 focus:ring-red-500" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
         </div>
-        <div className="relative w-full md:w-64"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} /><input type="text" placeholder="Cari berita..." className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} /></div>
+        <select className="p-2 border rounded-xl font-bold text-xs bg-gray-50 outline-none" value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}>
+          <option value="Semua">Semua Kategori</option>
+          <option value="Berita">Berita</option>
+          <option value="Pengumuman">Pengumuman</option>
+          <option value="Agenda">Agenda</option>
+        </select>
       </div>
 
-      {/* BERITA LIST (VISIBLE TO ALL) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredNews.map((item) => (
-          <div key={item.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-lg transition-all overflow-hidden flex flex-col h-full">
-            <div className="h-48 overflow-hidden relative">
-              <img src={item.image} alt={item.title} className="w-full h-full object-cover" />
-              <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-bold text-gray-800 shadow-sm flex items-center gap-1"><Tag size={12} className="text-red-600" /> {item.category}</div>
+      {/* FEED BERITA */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {loading ? (
+          <div className="col-span-full p-20 text-center text-gray-400"><Loader2 className="animate-spin mx-auto mb-2" /> Menghubungkan ke pusat informasi...</div>
+        ) : filteredNews.length === 0 ? (
+          <div className="col-span-full p-20 text-center text-gray-400 border-2 border-dashed rounded-3xl italic">Belum ada berita yang diterbitkan.</div>
+        ) : (
+          filteredNews.map((n) => (
+            <div key={n.id} className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow group flex flex-col">
+              <div className="p-6 space-y-4 flex-1">
+                <div className="flex justify-between items-center">
+                  <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                    n.category === 'Pengumuman' ? 'bg-orange-100 text-orange-700' : 
+                    n.category === 'Agenda' ? 'bg-blue-100 text-blue-700' : 
+                    'bg-teal-100 text-teal-700'
+                  }`}>
+                    {n.category}
+                  </span>
+                  <div className="text-[10px] text-gray-400 flex items-center gap-1 font-bold">
+                    <Calendar size={12}/> {n.date}
+                  </div>
+                </div>
+                
+                <h3 className="font-black text-xl text-gray-800 leading-tight uppercase group-hover:text-red-800 transition-colors">
+                  {n.title}
+                </h3>
+                
+                <p className="text-gray-600 text-sm line-clamp-3 leading-relaxed">
+                  {n.content}
+                </p>
+              </div>
+              
+              <div className="bg-gray-50 p-4 px-6 border-t flex justify-between items-center">
+                <span className="text-[10px] font-bold text-gray-400 italic">Oleh: {n.author}</span>
+                {isAdmin && (
+                  <div className="flex gap-2">
+                    <button onClick={() => { setFormData({...n}); setEditId(n.id); setIsEditing(true); setShowModal(true); }} className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg"><Edit size={16} /></button>
+                    <button onClick={() => handleDelete(n.id)} className="p-2 text-red-600 hover:bg-red-100 rounded-lg"><Trash2 size={16} /></button>
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="p-5 flex-1 flex flex-col">
-              <div className="flex items-center gap-3 text-xs text-gray-400 mb-3"><span className="flex items-center gap-1"><Calendar size={12}/> {item.date}</span><span className="flex items-center gap-1"><User size={12}/> {item.author}</span></div>
-              <h3 className="font-bold text-lg text-gray-800 mb-2 leading-tight line-clamp-2">{item.title}</h3>
-              <p className="text-gray-500 text-sm mb-4 line-clamp-3 flex-1">{item.content}</p>
-              <button onClick={() => setSelectedNews(item)} className="w-full mt-auto bg-gray-50 hover:bg-red-50 text-gray-700 hover:text-red-700 py-2 rounded-lg text-sm font-bold transition-colors flex justify-center items-center gap-1">Baca Selengkapnya <ChevronRight size={16} /></button>
-            </div>
+          ))
+        )}
+      </div>
+
+      {/* MODAL EDITOR BERITA */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl w-full max-w-2xl p-8 shadow-2xl overflow-y-auto max-h-[90vh]">
+            <h3 className="font-black text-2xl mb-6 text-gray-800 uppercase italic border-b pb-4">
+              {isEditing ? 'Edit Berita' : 'Tulis Berita Baru'}
+            </h3>
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] font-black text-gray-400 uppercase">Tanggal Terbit</label>
+                  <input type="date" required className="w-full p-3 bg-gray-50 border rounded-xl font-bold outline-none" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-gray-400 uppercase">Kategori</label>
+                  <select className="w-full p-3 bg-gray-50 border rounded-xl font-bold outline-none" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value as any})}>
+                    <option value="Berita">BERITA TERKINI</option>
+                    <option value="Pengumuman">PENGUMUMAN RESMI</option>
+                    <option value="Agenda">AGENDA KEGIATAN</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-gray-400 uppercase">Judul Berita</label>
+                <input required className="w-full p-3 bg-gray-50 border rounded-xl font-black uppercase text-lg outline-none focus:ring-2 focus:ring-red-500" placeholder="Ketik judul berita..." value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-gray-400 uppercase">Isi Berita / Keterangan</label>
+                <textarea required className="w-full p-3 bg-gray-50 border rounded-xl h-48 outline-none focus:ring-2 focus:ring-red-500 leading-relaxed" placeholder="Tuliskan isi berita secara lengkap di sini..." value={formData.content} onChange={e => setFormData({...formData, content: e.target.value})}></textarea>
+              </div>
+              <div className="flex gap-3 pt-4">
+                <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-4 border-2 rounded-2xl font-black text-gray-400 uppercase text-xs tracking-widest">Batal</button>
+                <button type="submit" disabled={loading} className="flex-1 py-4 bg-red-800 text-white rounded-2xl font-black shadow-xl hover:bg-red-900 uppercase text-xs tracking-widest">
+                  {loading ? 'Memproses...' : 'Terbitkan Sekarang'}
+                </button>
+              </div>
+            </form>
           </div>
-        ))}
-      </div>
-      
-      {/* MODAL BACA (VISIBLE TO ALL) */}
-      {selectedNews && <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"><div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"><div className="relative h-64 bg-gray-200"><img src={selectedNews.image} className="w-full h-full object-cover"/><button onClick={()=>setSelectedNews(null)} className="absolute top-4 right-4 bg-black/50 text-white p-2 rounded-full">X</button></div><div className="p-8 prose max-w-none">{selectedNews.fullContent}</div></div></div>}
-
-      {/* MODAL BUAT (ADMIN ONLY) */}
-      {canCreate && showModal && <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center"><div className="bg-white p-6 rounded-lg w-full max-w-lg"><h3>Tulis Berita</h3><input className="border w-full p-2 mb-2" placeholder="Judul" value={formData.title} onChange={e=>setFormData({...formData, title: e.target.value})}/><input type="file" onChange={handleImageUpload} className="mb-2"/><textarea className="border w-full p-2 mb-2" rows={5} placeholder="Isi Berita" value={formData.fullContent} onChange={e=>setFormData({...formData, fullContent: e.target.value})}/><button onClick={handleSubmit} className="bg-red-700 text-white px-4 py-2 rounded">Terbitkan</button><button onClick={()=>setShowModal(false)} className="ml-2 text-gray-500">Batal</button></div></div>}
+        </div>
+      )}
     </div>
   );
 };
 
-export default Info;
+export default News;
