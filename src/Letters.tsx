@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { supabase } from './supabaseClient';
+import { jsPDF } from 'jspdf';
 import { 
-  Search, Plus, FileText, Trash2, Edit, 
-  Printer, Loader2, Mail, Megaphone, ArrowDownLeft
+  Search, Plus, Trash2, Edit, 
+  Printer, Loader2, Mail, Megaphone, ArrowDownLeft, Info
 } from 'lucide-react';
 
 interface Letter {
@@ -13,7 +14,10 @@ interface Letter {
   subject: string;
   type: string;
   sender_receiver: string;
-  description: string;
+  attachment: string;
+  event_date: string;
+  venue: string;
+  agenda: string;
 }
 
 const Letters = () => {
@@ -23,6 +27,7 @@ const Letters = () => {
   const [letters, setLetters] = useState<Letter[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [lastRef, setLastRef] = useState('');
   
   const [showModal, setShowModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -34,7 +39,10 @@ const Letters = () => {
     subject: '',
     type: 'UNDANGAN',
     sender_receiver: '',
-    description: ''
+    attachment: '-',
+    event_date: '',
+    venue: '',
+    agenda: ''
   });
 
   const fetchLetters = async () => {
@@ -45,13 +53,14 @@ const Letters = () => {
       .order('id', { ascending: false });
 
     if (error) console.error(error);
-    else setLetters(data || []);
+    else {
+      setLetters(data || []);
+      if (data && data.length > 0) setLastRef(data[0].ref_number);
+    }
     setLoading(false);
   };
 
-  useEffect(() => {
-    fetchLetters();
-  }, []);
+  useEffect(() => { fetchLetters(); }, []);
 
   const openModal = (type: string) => {
     setFormData({
@@ -60,7 +69,10 @@ const Letters = () => {
       subject: '',
       type: type,
       sender_receiver: '',
-      description: ''
+      attachment: '-',
+      event_date: '',
+      venue: '',
+      agenda: ''
     });
     setIsEditing(false);
     setShowModal(true);
@@ -69,7 +81,6 @@ const Letters = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-
     let error;
     if (isEditing && editId !== null) {
       const res = await supabase.from('letters').update(formData).eq('id', editId);
@@ -78,167 +89,148 @@ const Letters = () => {
       const res = await supabase.from('letters').insert([formData]);
       error = res.error;
     }
-
     if (!error) {
-      alert('Data Berhasil Disimpan ke Database!');
+      alert('Arsip Berhasil Disimpan!');
       fetchLetters();
       setShowModal(false);
-    } else {
-      alert('Gagal: ' + error.message);
-    }
+    } else alert('Gagal: ' + error.message);
     setLoading(false);
   };
 
-  const handleDelete = async (id: number) => {
-    if (window.confirm('Hapus arsip ini?')) {
-      const { error } = await supabase.from('letters').delete().eq('id', id);
-      if (!error) fetchLetters();
-    }
-  };
+  // --- FUNGSI EKSPORT PDF F4 ---
+  const exportToPDF = (l: Letter) => {
+    const doc = new jsPDF({
+      unit: 'mm',
+      format: [215, 330] // Ukuran F4 / Folio
+    });
 
-  const filteredLetters = letters.filter(l => 
-    (l.subject?.toLowerCase() || '').includes(searchTerm.toLowerCase()) || 
-    (l.ref_number?.toLowerCase() || '').includes(searchTerm.toLowerCase())
-  );
+    // KOPSURAT
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('PERSATUAN GURU REPUBLIK INDONESIA (PGRI)', 107.5, 20, { align: 'center' });
+    doc.setFontSize(12);
+    doc.text('PENGURUS RANTING KALIJAGA', 107.5, 26, { align: 'center' });
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Sekretariat: Jl. Kalijaga No. 1, Cirebon, Jawa Barat', 107.5, 32, { align: 'center' });
+    doc.line(20, 35, 195, 35); // Garis Kop
+    doc.line(20, 36, 195, 36);
+
+    // ISI SURAT
+    doc.text(`${l.date}`, 160, 45); // Titimangsa
+    doc.text(`Nomor     : ${l.ref_number}`, 20, 55);
+    doc.text(`Lampiran  : ${l.attachment}`, 20, 60);
+    doc.text(`Perihal     : ${l.subject}`, 20, 65);
+
+    doc.text('Kepada Yth,', 20, 80);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`${l.sender_receiver}`, 20, 85);
+    doc.setFont('helvetica', 'normal');
+    doc.text('di Tempat', 20, 90);
+
+    doc.text('Dengan hormat,', 20, 105);
+    doc.text('Mengharap kehadiran Bapak/Ibu Anggota PGRI Ranting Kalijaga pada:', 20, 110);
+
+    // DETAIL ACARA
+    doc.text(`Hari/Tanggal : ${l.event_date}`, 35, 120);
+    doc.text(`Tempat           : ${l.venue}`, 35, 125);
+    doc.text(`Acara             : ${l.agenda}`, 35, 130);
+
+    doc.text('Demikian undangan ini kami sampaikan, atas kehadirannya diucapkan terima kasih.', 20, 145);
+
+    // TANDA TANGAN
+    doc.text('Ketua Ranting,', 140, 165);
+    
+    // STEMPEL (Simulasi lingkaran merah)
+    doc.setDrawColor(255, 0, 0);
+    doc.circle(155, 175, 12); 
+    doc.setTextColor(255, 0, 0);
+    doc.setFontSize(7);
+    doc.text('PGRI KALIJAGA', 155, 175, { align: 'center' });
+    
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('DENDI SUPARMAN, S.Pd.SD', 140, 190);
+    doc.setFont('helvetica', 'normal');
+    doc.text('NPA. 00001', 140, 195);
+
+    doc.save(`Undangan_${l.ref_number}.pdf`);
+  };
 
   return (
     <div className="space-y-6">
-      {/* HEADER & TOMBOL AKSI */}
       <div className="flex justify-between items-end bg-white p-6 rounded-2xl shadow-sm border">
         <div>
           <h1 className="text-2xl font-bold text-gray-800 uppercase">Administrasi Surat</h1>
-          <p className="text-sm text-red-600 font-bold">PGRI Ranting Kalijaga</p>
+          <div className="flex items-center gap-2 mt-1">
+             <span className="bg-red-50 text-red-700 px-2 py-0.5 rounded text-[10px] font-bold">No. Terakhir: {lastRef || '-'}</span>
+          </div>
         </div>
-        
         {isAdmin && (
           <div className="flex gap-2">
-            <button onClick={() => openModal('UNDANGAN')} className="bg-blue-600 text-white px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 hover:bg-blue-700 shadow-lg">
-              <Mail size={16} /> Buat Undangan
-            </button>
-            <button onClick={() => openModal('PENGUMUMAN')} className="bg-teal-600 text-white px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 hover:bg-teal-700 shadow-lg">
-              <Megaphone size={16} /> Buat Pengumuman
-            </button>
-            <button onClick={() => openModal('MASUK')} className="bg-orange-600 text-white px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 hover:bg-orange-700 shadow-lg">
-              <ArrowDownLeft size={16} /> Catat Surat Masuk
-            </button>
+            <button onClick={() => openModal('UNDANGAN')} className="bg-blue-600 text-white px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 shadow-lg"><Mail size={16} /> Buat Undangan</button>
+            <button onClick={() => openModal('MASUK')} className="bg-orange-600 text-white px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-2 shadow-lg"><ArrowDownLeft size={16} /> Surat Masuk</button>
           </div>
         )}
       </div>
 
-      {/* SEARCH BAR */}
-      <div className="relative">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-        <input 
-          type="text" 
-          placeholder="Cari Nomor Surat atau Perihal..." 
-          className="w-full pl-12 pr-4 py-3 bg-white border rounded-2xl outline-none focus:ring-2 focus:ring-red-500 shadow-sm"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
-      </div>
-
-      {/* TABEL DATA */}
       <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-gray-50 text-gray-500 font-bold uppercase text-[10px] border-b">
-              <tr>
-                <th className="p-4">Tanggal</th>
-                <th className="p-4">No. Surat</th>
-                <th className="p-4">Tujuan/Pengirim</th>
-                <th className="p-4">Perihal</th>
-                <th className="p-4 text-center">Tipe</th>
-                <th className="p-4 text-right">Aksi</th>
+        <table className="w-full text-left text-sm uppercase">
+          <thead className="bg-gray-50 text-gray-500 font-bold text-[10px] border-b">
+            <tr>
+              <th className="p-4">Tanggal & No</th>
+              <th className="p-4">Perihal</th>
+              <th className="p-4">Acara</th>
+              <th className="p-4 text-right">Aksi</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {letters.map((l) => (
+              <tr key={l.id} className="hover:bg-gray-50 transition-colors">
+                <td className="p-4">
+                  <div className="text-[10px] text-gray-400">{l.date}</div>
+                  <div className="font-bold text-red-800">{l.ref_number}</div>
+                </td>
+                <td className="p-4 font-bold">{l.subject}</td>
+                <td className="p-4 text-[10px]">{l.agenda || '-'}</td>
+                <td className="p-4 text-right">
+                  <div className="flex justify-end gap-1">
+                    {l.type === 'UNDANGAN' && <button onClick={() => exportToPDF(l)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg" title="Cetak PDF F4"><Printer size={16}/></button>}
+                    <button onClick={() => { setFormData({...l}); setEditId(l.id); setIsEditing(true); setShowModal(true); }} className="p-2 text-gray-400 hover:bg-gray-100 rounded-lg"><Edit size={16}/></button>
+                  </div>
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y">
-              {loading ? (
-                <tr><td colSpan={6} className="p-10 text-center"><Loader2 className="animate-spin mx-auto text-red-800" /></td></tr>
-              ) : filteredLetters.length === 0 ? (
-                <tr><td colSpan={6} className="p-10 text-center text-gray-400 italic">Belum ada data di database.</td></tr>
-              ) : (
-                filteredLetters.map((l) => (
-                  <tr key={l.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="p-4 whitespace-nowrap text-gray-600">{l.date}</td>
-                    <td className="p-4 font-bold text-red-800">{l.ref_number}</td>
-                    <td className="p-4 uppercase font-medium">{l.sender_receiver}</td>
-                    <td className="p-4 font-bold text-gray-800">{l.subject}</td>
-                    <td className="p-4 text-center">
-                      <span className={`px-3 py-1 rounded-full text-[9px] font-black border ${
-                        l.type === 'UNDANGAN' ? 'bg-blue-50 text-blue-700 border-blue-200' : 
-                        l.type === 'PENGUMUMAN' ? 'bg-teal-50 text-teal-700 border-teal-200' : 
-                        'bg-orange-50 text-orange-700 border-orange-200'
-                      }`}>
-                        {l.type}
-                      </span>
-                    </td>
-                    <td className="p-4 text-right">
-                      <div className="flex justify-end gap-1">
-                        <button className="p-2 text-gray-400 hover:bg-gray-100 rounded-lg"><Printer size={16}/></button>
-                        {isAdmin && (
-                          <>
-                            <button onClick={() => { setFormData({...l}); setEditId(l.id); setIsEditing(true); setShowModal(true); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"><Edit size={16}/></button>
-                            <button onClick={() => handleDelete(l.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg"><Trash2 size={16}/></button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+            ))}
+          </tbody>
+        </table>
       </div>
 
-      {/* MODAL FORM */}
       {showModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl w-full max-w-lg p-8 shadow-2xl animate-in zoom-in duration-200">
-            <div className="flex justify-between items-center mb-6 border-b pb-4">
-              <h3 className="font-black text-xl text-gray-800 uppercase italic">
-                {isEditing ? 'Edit Data' : `Buat ${formData.type}`}
-              </h3>
-              <span className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-[10px] font-bold">PGRI KALIJAGA</span>
-            </div>
-            
+          <div className="bg-white rounded-3xl w-full max-w-xl p-8 shadow-2xl max-h-[95vh] overflow-y-auto">
+            <h3 className="font-black text-xl mb-6 border-b pb-4 uppercase italic">Form Surat Undangan</h3>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] font-black text-gray-400 mb-1 uppercase">Tanggal Surat</label>
-                  <input type="date" required className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-red-500 font-bold" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-black text-gray-400 mb-1 uppercase">Jenis Surat</label>
-                  <select className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl outline-none font-bold text-red-800" value={formData.type} onChange={e => setFormData({...formData, type: e.target.value})}>
-                    <option value="UNDANGAN">UNDANGAN</option>
-                    <option value="PENGUMUMAN">PENGUMUMAN</option>
-                    <option value="MASUK">SURAT MASUK</option>
-                    <option value="KELUAR">SURAT KELUAR</option>
-                  </select>
-                </div>
+                <div><label className="text-[10px] font-bold text-gray-400">NOMOR SURAT</label><input required className="w-full p-2 bg-gray-50 border rounded-lg font-bold" value={formData.ref_number} onChange={e => setFormData({...formData, ref_number: e.target.value})} /></div>
+                <div><label className="text-[10px] font-bold text-gray-400">TITIMANGSA</label><input type="date" className="w-full p-2 bg-gray-50 border rounded-lg" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} /></div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div><label className="text-[10px] font-bold text-gray-400">LAMPIRAN</label><select className="w-full p-2 bg-gray-50 border rounded-lg" value={formData.attachment} onChange={e => setFormData({...formData, attachment: e.target.value})}><option value="-">-</option><option value="1 (satu) bundel">1 (satu) bundel</option></select></div>
+                <div><label className="text-[10px] font-bold text-gray-400">TUJUAN (KEPADA YTH)</label><input required className="w-full p-2 bg-gray-50 border rounded-lg" value={formData.sender_receiver} onChange={e => setFormData({...formData, sender_receiver: e.target.value})} /></div>
+              </div>
+              <div><label className="text-[10px] font-bold text-gray-400">PERIHAL</label><input required className="w-full p-2 bg-gray-50 border rounded-lg uppercase font-bold" value={formData.subject} onChange={e => setFormData({...formData, subject: e.target.value})} /></div>
+              
+              <div className="bg-blue-50 p-4 rounded-2xl space-y-3">
+                <p className="text-[10px] font-bold text-blue-700 uppercase">Detail Pelaksanaan Acara</p>
+                <div><label className="text-[10px] font-bold text-gray-400">HARI/TANGGAL</label><input required className="w-full p-2 bg-white border rounded-lg" placeholder="Contoh: Senin, 02 Februari 2026" value={formData.event_date} onChange={e => setFormData({...formData, event_date: e.target.value})} /></div>
+                <div><label className="text-[10px] font-bold text-gray-400">TEMPAT</label><input required className="w-full p-2 bg-white border rounded-lg" value={formData.venue} onChange={e => setFormData({...formData, venue: e.target.value})} /></div>
+                <div><label className="text-[10px] font-bold text-gray-400">ACARA</label><input required className="w-full p-2 bg-white border rounded-lg" value={formData.agenda} onChange={e => setFormData({...formData, agenda: e.target.value})} /></div>
               </div>
 
-              <div>
-                <label className="block text-[10px] font-black text-gray-400 mb-1 uppercase">Nomor Surat</label>
-                <input required className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-red-500 font-mono font-bold" placeholder="001/Pgn/0701-04/..." value={formData.ref_number} onChange={e => setFormData({...formData, ref_number: e.target.value})} />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-black text-gray-400 mb-1 uppercase">Perihal / Judul</label>
-                <input required className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-red-500 font-bold uppercase" placeholder="Contoh: Rapat Pleno Seragam" value={formData.subject} onChange={e => setFormData({...formData, subject: e.target.value})} />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-black text-gray-400 mb-1 uppercase">Tujuan / Pengirim</label>
-                <input required className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-red-500 font-bold" placeholder="Seluruh Anggota / Instansi Terkait" value={formData.sender_receiver} onChange={e => setFormData({...formData, sender_receiver: e.target.value})} />
-              </div>
-
-              <div className="flex gap-3 pt-6">
-                <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-4 border-2 border-gray-100 rounded-2xl font-black text-gray-400 hover:bg-gray-50 transition-all uppercase text-xs tracking-widest">Batal</button>
-                <button type="submit" disabled={loading} className="flex-1 py-4 bg-red-800 text-white rounded-2xl font-black shadow-xl hover:bg-red-900 transition-all uppercase text-xs tracking-widest">
-                  {loading ? 'Menyimpan...' : 'Simpan Arsip'}
-                </button>
+              <div className="flex gap-3 pt-4">
+                <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-3 border-2 rounded-xl font-bold text-gray-400">BATAL</button>
+                <button type="submit" className="flex-1 py-3 bg-red-800 text-white rounded-xl font-bold shadow-lg uppercase tracking-widest text-xs">SIMPAN & ARSIPKAN</button>
               </div>
             </form>
           </div>
