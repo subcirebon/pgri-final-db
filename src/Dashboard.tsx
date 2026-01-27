@@ -3,12 +3,12 @@ import { useOutletContext, Link } from 'react-router-dom';
 import { supabase } from './supabaseClient';
 import { 
   Users, Wallet, Mail, Megaphone, Gift, MessageCircle, 
-  CreditCard, ArrowRight, Loader2, QrCode, Copy, Check, X
+  CreditCard, ArrowRight, Loader2, Camera, User as UserIcon
 } from 'lucide-react';
 
 const Dashboard = () => {
-  // Mengambil data userName langsung dari sistem login (OutletContext)
-  const { userName } = useOutletContext<{ userName: string }>();
+  // 1. Ambil data user dari context (pastikan login sudah mengirimkan data ini)
+  const { userName, userRole } = useOutletContext<{ userName: string, userRole: string }>();
   
   const today = new Date();
   const todayStr = `${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
@@ -17,28 +17,36 @@ const Dashboard = () => {
   const [news, setNews] = useState<any[]>([]);
   const [birthdays, setBirthdays] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-
-  // Modal State
-  const [showModal, setShowModal] = useState(false);
-  const [selectedMember, setSelectedMember] = useState<any>(null);
-  const [amount, setAmount] = useState('50000');
-  const [paymentTab, setPaymentTab] = useState<'qris' | 'transfer'>('qris');
+  const [profileUrl, setProfileUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
     try {
+      // Ambil Statistik
       const { count: mCount } = await supabase.from('members').select('*', { count: 'exact', head: true });
       const { count: lCount } = await supabase.from('letters').select('*', { count: 'exact', head: true }).eq('type', 'MASUK');
       const { data: financeData } = await supabase.from('finance').select('amount, type');
-      
       const balance = financeData?.reduce((acc, curr) => curr.type === 'income' ? acc + curr.amount : acc - curr.amount, 0) || 0;
+
+      // Ambil Berita
       const { data: newsData } = await supabase.from('news').select('*').order('date', { ascending: false }).limit(4);
+
+      // Ambil Ultah
       const { data: bDayData } = await supabase.from('members').select('*');
       const filteredBDay = bDayData?.filter(m => m.birth_date?.slice(5) === todayStr) || [];
+
+      // 2. AMBIL FOTO PROFIL PERMANEN DARI DATABASE
+      const { data: memberData } = await supabase
+        .from('members')
+        .select('avatar_url')
+        .eq('name', userName) // Mencocokkan dengan nama akun yang login
+        .single();
 
       setStats({ members: mCount || 0, balance, letters: lCount || 0 });
       setNews(newsData || []);
       setBirthdays(filteredBDay);
+      if (memberData) setProfileUrl(memberData.avatar_url);
     } catch (error) {
       console.error(error);
     } finally {
@@ -46,31 +54,46 @@ const Dashboard = () => {
     }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { 
+    if (userName) fetchData(); 
+  }, [userName]);
 
-  // --- PERBAIKAN TOMBOL KADO (SAVE TO DATABASE) ---
-  const handleGiftSubmit = async () => {
-    const nominal = parseInt(amount);
-    
-    const { error } = await supabase.from('finance').insert([{
-      date: new Date().toISOString().split('T')[0],
-      description: `Kado Ultah: ${selectedMember.name}`,
-      amount: nominal,
-      type: 'income',
-      category: 'Dana Sosial'
-    }]);
+  // 3. FUNGSI UPLOAD & SIMPAN PERMANEN KE DATABASE
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    try {
+      setUploading(true);
+      const file = e.target.files?.[0];
+      if (!file) return;
 
-    if (!error) {
-      alert('Alhamdulillah! Kado berhasil dicatat di Kas Keuangan.');
-      fetchData(); // Refresh saldo kas secara real-time
-      setShowModal(false);
-      
-      // Buka WA untuk konfirmasi
-      const nomorBendahara = '628997773450';
-      const pesan = `Halo Bendahara, saya kirim kado Rp ${nominal.toLocaleString('id-ID')} untuk ultah ${selectedMember.name}. Mohon verifikasi kas.`;
-      window.open(`https://wa.me/${nomorBendahara}?text=${pesan}`, '_blank');
-    } else {
-      alert('Gagal mencatat kado: ' + error.message);
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${userName.replace(/\s+/g, '_')}_${Date.now()}.${fileExt}`;
+      const filePath = `avatars/${fileName}`;
+
+      // Upload ke Storage
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      // Dapatkan URL Publik
+      const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
+      const publicUrl = data.publicUrl;
+
+      // SIMPAN URL KE TABEL MEMBERS (Agar permanen saat refresh)
+      const { error: updateError } = await supabase
+        .from('members')
+        .update({ avatar_url: publicUrl })
+        .eq('name', userName);
+
+      if (updateError) throw updateError;
+
+      setProfileUrl(publicUrl);
+      alert('Foto Profil Berhasil Diperbarui secara Permanen!');
+    } catch (error: any) {
+      alert('Gagal Update: ' + error.message);
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -79,54 +102,52 @@ const Dashboard = () => {
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
       
-      {/* GREETING DINAMIS SESUAI AKUN LOGIN */}
-      <div className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm">
-        <h1 className="text-2xl font-black text-gray-800 uppercase italic">
-          Selamat Datang, <span className="text-red-800">{userName || 'PENGURUS'}</span>
-        </h1>
-        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Sistem Administrasi PGRI Ranting Kalijaga</p>
+      {/* BAGIAN HEADER PROFIL DENGAN NAMA DINAMIS */}
+      <div className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm flex items-center gap-6">
+        <div className="relative group">
+          <div className="w-20 h-20 rounded-full border-4 border-red-50 overflow-hidden bg-gray-100 flex items-center justify-center shadow-inner">
+            {profileUrl ? (
+              <img src={profileUrl} className="w-full h-full object-cover" alt="Profile" />
+            ) : (
+              <UserIcon size={32} className="text-gray-300" />
+            )}
+          </div>
+          <label className="absolute bottom-0 right-0 bg-red-800 text-white p-2 rounded-full cursor-pointer shadow-lg hover:bg-red-900 transition-all">
+            {uploading ? <Loader2 size={14} className="animate-spin" /> : <Camera size={14} />}
+            <input type="file" className="hidden" accept="image/*" onChange={handleAvatarUpload} disabled={uploading} />
+          </label>
+        </div>
+        
+        <div>
+          <h1 className="text-2xl font-black text-gray-800 uppercase italic">
+            Selamat Datang, <span className="text-red-800">{userName || 'PENGURUS'}</span>
+          </h1>
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">
+            PGRI Ranting Kalijaga • {userRole || 'Anggota'}
+          </p>
+        </div>
       </div>
 
-      {/* BANNER ULANG TAHUN */}
-      {birthdays.length > 0 && (
-        <div className="bg-gradient-to-r from-pink-600 to-rose-600 rounded-[28px] p-6 text-white shadow-xl relative overflow-hidden">
-          <div className="relative z-10 flex flex-col md:flex-row items-center gap-6">
-            <Gift size={40} className="text-yellow-300 animate-bounce" />
-            <div className="flex-1 text-center md:text-left">
-              <h3 className="text-xl font-black uppercase italic tracking-wider">Keluarga PGRI Berulang Tahun!</h3>
-              <div className="flex flex-wrap justify-center md:justify-start gap-3 mt-3">
-                {birthdays.map((m) => (
-                  <div key={m.id} className="flex items-center gap-3 bg-white text-pink-700 px-4 py-2 rounded-2xl text-xs font-black shadow-lg">
-                    <span>{m.name}</span>
-                    <button onClick={() => { setSelectedMember(m); setShowModal(true); }} className="bg-yellow-400 text-yellow-900 px-3 py-1 rounded-xl text-[10px] flex items-center gap-1 hover:bg-yellow-500 transition-all font-bold"><CreditCard size={14} /> BERI KADO</button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* STATISTIK REAL-TIME */}
+      {/* STATISTIK & BERITA (DIPERTAHANKAN) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-7 rounded-[32px] border border-gray-100 shadow-sm hover:shadow-md transition-all">
+        <div className="bg-white p-7 rounded-[32px] border border-gray-100 shadow-sm flex flex-col">
           <div className="p-4 bg-blue-50 text-blue-700 rounded-2xl w-fit mb-4"><Users size={28} /></div>
           <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Total Anggota</p>
           <h3 className="text-4xl font-black text-gray-800 tracking-tighter">{stats.members}</h3>
         </div>
-        <div className="bg-white p-7 rounded-[32px] border border-gray-100 shadow-sm hover:shadow-md transition-all">
+        <div className="bg-white p-7 rounded-[32px] border border-gray-100 shadow-sm flex flex-col">
           <div className="p-4 bg-green-50 text-green-700 rounded-2xl w-fit mb-4"><Wallet size={28} /></div>
           <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Saldo Kas Aktual</p>
           <h3 className="text-4xl font-black text-gray-800 tracking-tighter">Rp {stats.balance.toLocaleString('id-ID')}</h3>
         </div>
-        <div className="bg-white p-7 rounded-[32px] border border-gray-100 shadow-sm hover:shadow-md transition-all">
+        <div className="bg-white p-7 rounded-[32px] border border-gray-100 shadow-sm flex flex-col">
           <div className="p-4 bg-orange-50 text-orange-700 rounded-2xl w-fit mb-4"><Mail size={28} /></div>
           <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Surat Masuk</p>
           <h3 className="text-4xl font-black text-gray-800 tracking-tighter">{stats.letters}</h3>
         </div>
       </div>
 
-      {/* INFO TERBARU (MAKS 4) */}
+      {/* BERITA (DIPERTAHANKAN) */}
       <div className="bg-white rounded-[32px] border border-gray-100 p-8 shadow-sm">
          <div className="flex justify-between items-center mb-8">
             <h3 className="text-xl font-black text-gray-800 flex items-center gap-3 uppercase italic"><Megaphone size={24} className="text-red-700" /> Berita Terkini</h3>
@@ -147,38 +168,6 @@ const Dashboard = () => {
            ))}
          </div>
       </div>
-
-      {/* MODAL KADO */}
-      {showModal && selectedMember && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-[32px] w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in duration-300">
-            <div className="bg-red-800 p-6 flex justify-between items-center text-white">
-              <h3 className="font-black uppercase italic tracking-tighter">Beri Kado Ultah</h3>
-              <button onClick={() => setShowModal(false)} className="bg-white/10 p-2 rounded-full hover:bg-white/20 transition-all"><X size={20} /></button>
-            </div>
-            <div className="p-8 space-y-6">
-              <div className="text-center">
-                <p className="text-[10px] font-black text-gray-400 uppercase">Penerima Kado</p>
-                <h4 className="text-xl font-black text-gray-800 uppercase italic">{selectedMember.name}</h4>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                {['20000', '50000', '100000', '150000'].map((val) => (
-                  <button key={val} onClick={() => setAmount(val)} className={`py-3 rounded-2xl text-xs font-black border-2 transition-all ${amount === val ? 'bg-red-800 text-white border-red-800 shadow-lg' : 'bg-white text-gray-400 border-gray-100 hover:border-red-200'}`}>
-                    Rp {parseInt(val).toLocaleString('id-ID')}
-                  </button>
-                ))}
-              </div>
-              <div className="bg-gray-50 p-6 rounded-[24px] text-center border-2 border-dashed border-gray-200">
-                <QrCode className="mx-auto mb-2 text-gray-400" size={48} />
-                <p className="text-[10px] font-bold text-gray-500 uppercase">Silakan Scan QRIS Bendahara</p>
-              </div>
-              <button onClick={handleGiftSubmit} className="w-full bg-green-600 text-white py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl hover:bg-green-700 transition-all flex items-center justify-center gap-2">
-                <MessageCircle size={18} /> Kirim & Konfirmasi WA
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
