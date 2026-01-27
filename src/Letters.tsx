@@ -89,7 +89,7 @@ const Letters = () => {
     doc.text('di Tempat', 20, marginAtas + 45);
 
     doc.text('Dengan hormat,', 20, marginAtas + 60);
-    doc.text('Mengharap kehadiran Bapak/Ibu Anggota PGRI Ranting Kalijaga pada:', 20, marginAtas + 65);
+    doc.text('Dengan ini kami mengharap kehadiran Bapak/Ibu/Saudara  pada:', 20, marginAtas + 65);
 
     const detailX = 30;
     const detailTitikDuaX = 58;
