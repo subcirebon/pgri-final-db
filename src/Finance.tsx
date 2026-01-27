@@ -13,6 +13,7 @@ import autoTable from 'jspdf-autotable';
 interface Transaction {
   id: number;
   date: string;
+  created_at: string; // Tambahkan ini untuk key sort
   type: 'income' | 'outcome';
   category: string;
   amount: number;
@@ -32,11 +33,18 @@ const Finance = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // LOAD DATA
+  // LOAD DATA (PERBAIKAN SORTING DI SINI)
   const fetchData = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase.from('finance').select('*').order('date', { ascending: false });
+      const { data, error } = await supabase
+        .from('finance')
+        .select('*')
+        // Prioritas 1: Urutkan Tanggal Transaksi (Terbaru ke Terlama)
+        .order('date', { ascending: false })
+        // Prioritas 2: Urutkan Waktu Input (Terbaru ke Terlama) -> Agar yg baru diinput naik ke atas
+        .order('created_at', { ascending: false });
+
       if (error) throw error;
       setTransactions(data || []);
     } catch (err) { console.error(err); } 
@@ -62,29 +70,19 @@ const Finance = () => {
   // --- FUNGSI CETAK PDF (PREVIEW MODE) ---
   const generatePDF = () => {
     const doc = new jsPDF();
-    
-    // 1. SET FONT TIMES NEW ROMAN
     doc.setFont("times", "normal");
 
-    // 2. KOP JUDUL
-    doc.setFontSize(14);
-    doc.setFont("times", "bold");
+    // KOP
+    doc.setFontSize(14); doc.setFont("times", "bold");
     doc.text("PERSATUAN GURU REPUBLIK INDONESIA (PGRI)", 105, 15, { align: "center" });
-    doc.setFontSize(12);
-    doc.text("RANTING KALIJAGA", 105, 22, { align: "center" });
-    doc.setFontSize(10);
-    doc.setFont("times", "normal");
+    doc.setFontSize(12); doc.text("RANTING KALIJAGA", 105, 22, { align: "center" });
+    doc.setFontSize(10); doc.setFont("times", "normal");
     doc.text("Laporan Keuangan & Kas Organisasi", 105, 28, { align: "center" });
-    
-    // Garis Pemisah
     doc.line(14, 32, 196, 32);
 
-    // 3. TABEL DATA
+    // TABEL
     const tableBody = transactions.map((t, index) => [
-      index + 1,
-      t.date,
-      t.category,
-      t.description,
+      index + 1, t.date, t.category, t.description,
       t.type === 'income' ? formatRp(t.amount) : '-',
       t.type === 'outcome' ? formatRp(t.amount) : '-',
     ]);
@@ -94,34 +92,22 @@ const Finance = () => {
       head: [['No', 'Tanggal', 'Kategori', 'Keterangan', 'Masuk', 'Keluar']],
       body: tableBody,
       theme: 'grid',
-      styles: { 
-        font: "times", 
-        fontSize: 9,
-        cellPadding: 2
-      },
-      headStyles: { 
-        fillColor: [153, 27, 27], // Warna Merah PGRI
-        textColor: 255,
-        fontStyle: 'bold',
-        halign: 'center'
-      },
+      styles: { font: "times", fontSize: 9, cellPadding: 2 },
+      headStyles: { fillColor: [153, 27, 27], textColor: 255, fontStyle: 'bold', halign: 'center' },
       columnStyles: {
-        0: { halign: 'center', cellWidth: 10 }, // No
-        4: { halign: 'right', fontStyle: 'bold', textColor: [22, 163, 74] }, // Masuk (Hijau)
-        5: { halign: 'right', fontStyle: 'bold', textColor: [220, 38, 38] }, // Keluar (Merah)
+        0: { halign: 'center', cellWidth: 10 },
+        4: { halign: 'right', fontStyle: 'bold', textColor: [22, 163, 74] },
+        5: { halign: 'right', fontStyle: 'bold', textColor: [220, 38, 38] },
       }
     });
 
-    // 4. RINGKASAN SALDO (Di bawah tabel)
+    // RINGKASAN
     const finalY = (doc as any).lastAutoTable.finalY + 10;
-    
-    // Hitung Total
     const totalInc = transactions.filter(t => t.type === 'income').reduce((a, b) => a + b.amount, 0);
     const totalOut = transactions.filter(t => t.type === 'outcome').reduce((a, b) => a + b.amount, 0);
     const balance = totalInc - totalOut;
 
-    doc.setFontSize(10);
-    doc.setFont("times", "bold");
+    doc.setFontSize(10); doc.setFont("times", "bold");
     doc.text("RINGKASAN:", 14, finalY);
     doc.setFont("times", "normal");
     doc.text(`Total Pemasukan : ${formatRp(totalInc)}`, 14, finalY + 6);
@@ -129,24 +115,18 @@ const Finance = () => {
     doc.setFont("times", "bold");
     doc.text(`SALDO AKHIR      : ${formatRp(balance)}`, 14, finalY + 18);
 
-    // 5. TANDA TANGAN (Standar Organisasi)
+    // TTD
     const signY = finalY + 30;
     const today = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
-
     doc.setFont("times", "normal");
     doc.text("Mengetahui,", 30, signY, { align: "center" });
     doc.text("Ketua Ranting", 30, signY + 5, { align: "center" });
     doc.text("( ........................... )", 30, signY + 25, { align: "center" });
-
     doc.text(`Cirebon, ${today}`, 170, signY, { align: "center" });
     doc.text("Bendahara", 170, signY + 5, { align: "center" });
     doc.text("( ........................... )", 170, signY + 25, { align: "center" });
 
-    // --- PERUBAHAN DI SINI: PREVIEW DI TAB BARU ---
-    // Mengubah PDF menjadi URL Blob agar bisa dibuka di browser
-    const pdfBlob = doc.output('blob');
-    const pdfUrl = URL.createObjectURL(pdfBlob);
-    window.open(pdfUrl, '_blank');
+    window.open(URL.createObjectURL(doc.output('blob')), '_blank');
   };
 
   // --- KOMPRESI GAMBAR ---
@@ -212,7 +192,7 @@ const Finance = () => {
     XLSX.writeFile(wb, `Laporan_Keuangan_PGRI.xlsx`);
   };
 
-  // PERHITUNGAN TOTAL
+  // TOTAL & FILTER
   const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + Number(t.amount), 0);
   const totalExpense = transactions.filter(t => t.type === 'outcome').reduce((sum, t) => sum + Number(t.amount), 0);
   const currentBalance = totalIncome - totalExpense;
@@ -233,7 +213,6 @@ const Finance = () => {
                {showExportMenu && (
                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-100 z-20 overflow-hidden">
                    <button onClick={exportToExcel} className="w-full text-left px-4 py-3 hover:bg-green-50 text-gray-700 text-sm font-bold"><FileSpreadsheet size={16} className="inline mr-2"/> Excel (.xlsx)</button>
-                   {/* TOMBOL CETAK PDF (Preview) */}
                    <button onClick={generatePDF} className="w-full text-left px-4 py-3 hover:bg-red-50 text-gray-700 border-t text-sm font-bold"><Printer size={16} className="inline mr-2"/> Preview PDF</button>
                  </div>
                )}
@@ -289,7 +268,7 @@ const Finance = () => {
         </div>
       </div>
 
-      {/* MODAL INPUT TRANSAKSI */}
+      {/* MODAL INPUT */}
       {canAdd && showModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
            <div className="bg-white rounded-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto animate-in zoom-in duration-200">
@@ -303,12 +282,10 @@ const Finance = () => {
                 <div><label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Kategori</label><select className="w-full p-2 border rounded-lg" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>{formData.type === 'income' ? ['Iuran Wajib', 'Sumbangan', 'Dana Sosial', 'Lainnya'].map(o=><option key={o}>{o}</option>) : ['ATK & Operasional', 'Konsumsi', 'Transport', 'Dana Sosial', 'Lainnya'].map(o=><option key={o}>{o}</option>)}</select></div>
                 <div><label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Nominal (Rp)</label><input type="number" className="w-full p-2 border rounded-lg font-mono font-bold" value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} /></div>
                 <div><label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Keterangan</label><input type="text" className="w-full p-2 border rounded-lg" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} /></div>
-                
                 <div className="border border-dashed border-gray-300 p-3 rounded-lg bg-gray-50 text-center relative hover:bg-gray-100">
                    <input type="file" accept="image/*" onChange={handleFileChange} className="absolute inset-0 opacity-0 cursor-pointer" />
                    <div className="flex items-center justify-center gap-2 text-gray-500 text-sm">{uploadedProofUrl ? <span className="text-green-600 font-bold flex items-center gap-1"><FileText size={14}/> File Siap</span> : uploading ? <span className="text-indigo-600 font-bold flex items-center gap-1"><Loader2 size={14} className="animate-spin"/> Mengupload...</span> : <><Upload size={16}/> Upload Bukti</>}</div>
                 </div>
-
                 <button type="submit" disabled={uploading} className="w-full bg-indigo-700 hover:bg-indigo-800 text-white py-3 rounded-lg font-bold shadow-lg mt-2 uppercase tracking-wide disabled:opacity-50">{uploading ? 'Tunggu Upload...' : 'Simpan Transaksi'}</button>
               </form>
            </div>
