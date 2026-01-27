@@ -15,53 +15,46 @@ import Donations from './Donations';
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userRole, setUserRole] = useState(''); 
-  const [userName, setUserName] = useState(''); // BARU: State untuk Nama User
+  const [userName, setUserName] = useState(''); // State untuk Nama
   const [isChecking, setIsChecking] = useState(true);
 
   useEffect(() => {
     const loggedIn = localStorage.getItem('pgri_login');
     const role = localStorage.getItem('pgri_role');
-    const name = localStorage.getItem('pgri_name'); // BARU: Ambil nama dari penyimpanan
+    const name = localStorage.getItem('pgri_name'); // Ambil nama
     
     if (loggedIn === 'true' && role) {
       setIsAuthenticated(true);
       setUserRole(role);
-      setUserName(name || 'GURU'); // Set nama jika ada
+      setUserName(name || 'PENGURUS'); 
     }
     setIsChecking(false);
   }, []);
 
-  const handleLogin = (role: string, name: string) => { // BARU: Terima parameter name
+  const handleLogin = (role: string, name: string) => {
     setIsAuthenticated(true);
     setUserRole(role);
-    setUserName(name); // Simpan nama ke state
+    setUserName(name); 
     localStorage.setItem('pgri_login', 'true');
     localStorage.setItem('pgri_role', role);
-    localStorage.setItem('pgri_name', name); // Simpan nama ke local storage
+    localStorage.setItem('pgri_name', name); // Simpan nama secara permanen
   };
 
   const handleLogout = () => {
-    if (window.confirm('Apakah Anda yakin ingin keluar?')) {
+    if (window.confirm('Keluar aplikasi?')) {
       setIsAuthenticated(false);
-      setUserRole('');
-      setUserName('');
-      localStorage.removeItem('pgri_login');
-      localStorage.removeItem('pgri_role');
-      localStorage.removeItem('pgri_name'); // BARU: Hapus nama saat logout
+      localStorage.clear(); // Bersihkan semua memori
       window.location.href = "/";
     }
   };
 
   if (isChecking) return null;
-
-  if (!isAuthenticated) {
-    return <Login onLogin={handleLogin} />;
-  }
+  if (!isAuthenticated) return <Login onLogin={handleLogin} />;
 
   return (
     <BrowserRouter>
       <Routes>
-        {/* Sekarang kita kirim userRole DAN userName ke Layout */}
+        {/* Mengirimkan data ke Layout */}
         <Route path="/" element={<Layout onLogout={handleLogout} userRole={userRole} userName={userName} />}>
           <Route index element={<Dashboard />} />
           <Route path="info" element={<Info />} />
