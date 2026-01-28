@@ -43,7 +43,7 @@ const generatePDF = (l: Letter, action: 'preview' | 'download') => {
   doc.text('Dengan hormat,', marginKiri, y);
   turun(8);
 
-  // --- ISI SURAT (AUTO-HEIGHT) ---
+  // --- ISI SURAT (AUTO-HEIGHT / SOLUSI FIX) ---
   if (l.type === 'UNDANGAN') {
     doc.text('Mengharap kehadiran Bapak/Ibu Anggota PGRI Ranting Kalijaga pada:', marginKiri, y);
     turun(8);
@@ -79,7 +79,7 @@ const generatePDF = (l: Letter, action: 'preview' | 'download') => {
     turun(10); 
   }
 
-  // --- TANDA TANGAN (ANTI-NABRAK) ---
+  // --- TANDA TANGAN (ANTI-NABRAK & AUTO PAGE BREAK) ---
   
   // SAFETY: Pastikan posisi minimal di Y=200 biar tidak terlalu naik kalau surat pendek.
   // Tapi kalau surat panjang (y > 200), dia akan pakai posisi y terakhir + 20mm.
@@ -89,10 +89,10 @@ const generatePDF = (l: Letter, action: 'preview' | 'download') => {
       turun(20); 
   }
 
-  // Cek Halaman Baru: Kalau Y sudah mau habis kertas (misal > 270), tambah halaman
-  if (y > 280) {
+  // CEK HALAMAN BARU: Kalau Y sudah di ujung kertas (misal > 270), pindah halaman.
+  if (y > 270) {
       doc.addPage();
-      y = 40; // Reset Y di halaman baru
+      y = 40; // Mulai dari atas di halaman baru
   }
 
   // Header Organisasi
