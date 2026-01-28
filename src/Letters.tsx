@@ -1,127 +1,116 @@
 const generatePDF = (l: Letter, action: 'preview' | 'download') => {
-  // 1. SETUP DOKUMEN
-  // Menggunakan ukuran F4 (215 x 330 mm)
+  // 1. SETUP KERTAS F4
   const doc = new jsPDF({ unit: 'mm', format: [215, 330] });
   
-  const marginAtas = 55; // 5.5 cm sesuai request
+  // Konfigurasi Margin & Jarak
   const marginKiri = 20;
-  const labelX = 20;
-  const titikDuaX = 45; 
-  const isiX = 48;
-  const lineHeight = 6; // Jarak antar baris standar
+  const centerPage = 107.5; // Tengah halaman (215 / 2)
+  const ttdKiri = 55;       // Titik tengah TTD Ketua
+  const ttdKanan = 160;     // Titik tengah TTD Sekretaris
+  
+  // Cursor Y (Posisi vertikal saat ini)
+  let y = 55; // Margin atas mulai di 5.5 cm
 
   doc.setFont('times', 'normal');
   doc.setFontSize(12);
 
-  // --- TRACKING POSISI Y (CURSOR) ---
-  // Variable ini akan bergerak ke bawah seiring kita menulis
-  let currentY = marginAtas;
+  // --- HEADER TANGGAL & NOMOR ---
+  // Tanggal di kanan
+  doc.text(`Cirebon, ${formatTanggalIndo(l.date)}`, 145, y); 
+  
+  y += 10; // Turun 10mm
+  // Nomor, Lampiran, Perihal
+  const labelX = 20; const titikDuaX = 45; const isiX = 48;
+  
+  doc.text('Nomor', labelX, y); doc.text(':', titikDuaX, y); doc.text(l.ref_number, isiX, y);
+  y += 6;
+  doc.text('Lampiran', labelX, y); doc.text(':', titikDuaX, y); doc.text(l.attachment, isiX, y);
+  y += 6;
+  doc.text('Perihal', labelX, y); doc.text(':', titikDuaX, y); doc.setFont('times', 'bold'); doc.text(l.subject, isiX, y);
 
-  // 2. TITIMANGSA
-  doc.text(`Cirebon, ${formatTanggalIndo(l.date)}`, 145, currentY); 
-  
-  // 3. HEADER SURAT
-  currentY += 10; // Turun 10mm
-  doc.text('Nomor', labelX, currentY); doc.text(':', titikDuaX, currentY); doc.text(l.ref_number, isiX, currentY);
-  
-  currentY += 6;
-  doc.text('Lampiran', labelX, currentY); doc.text(':', titikDuaX, currentY); doc.text(l.attachment, isiX, currentY);
-  
-  currentY += 6;
-  doc.text('Perihal', labelX, currentY); doc.text(':', titikDuaX, currentY); doc.setFont('times', 'bold'); doc.text(l.subject, isiX, currentY);
-
-  // 4. KEPADA YTH
-  currentY += 15; // Jarak agak jauh dari perihal
+  // --- KEPADA YTH ---
+  y += 15; 
   doc.setFont('times', 'normal');
-  doc.text('Kepada Yth,', marginKiri, currentY);
-  
-  currentY += 5;
+  doc.text('Kepada Yth,', marginKiri, y);
+  y += 5;
   doc.setFont('times', 'bold');
-  doc.text(`${l.sender_receiver}`, marginKiri, currentY);
-  
-  currentY += 5;
+  doc.text(`${l.sender_receiver}`, marginKiri, y);
+  y += 5;
   doc.setFont('times', 'normal');
-  doc.text('di Tempat', marginKiri, currentY);
+  doc.text('di Tempat', marginKiri, y);
 
-  // 5. ISI SURAT
-  currentY += 15; // Jarak sebelum "Dengan hormat"
-  doc.text('Dengan hormat,', marginKiri, currentY);
-
-  currentY += 6;
+  // --- ISI SURAT ---
+  y += 15;
+  doc.text('Dengan hormat,', marginKiri, y);
+  y += 6;
 
   if (l.type === 'UNDANGAN') {
-    doc.text('Mengharap kehadiran Bapak/Ibu Anggota PGRI Ranting Kalijaga pada:', marginKiri, currentY);
+    doc.text('Mengharap kehadiran Bapak/Ibu Anggota PGRI Ranting Kalijaga pada:', marginKiri, y);
+    y += 8;
     
-    currentY += 10;
     const detailX = 30; const dTX = 58; const dIX = 61;
+    doc.text('Hari/Tanggal', detailX, y); doc.text(':', dTX, y); doc.text(l.event_date, dIX, y);
+    y += 7;
+    doc.text('Tempat', detailX, y); doc.text(':', dTX, y); doc.text(l.venue, dIX, y);
+    y += 7;
+    doc.text('Acara', detailX, y); doc.text(':', dTX, y); doc.text(l.agenda, dIX, y);
+    y += 12;
     
-    doc.text('Hari/Tanggal', detailX, currentY); doc.text(':', dTX, currentY); doc.text(l.event_date, dIX, currentY);
-    currentY += 7;
-    doc.text('Tempat', detailX, currentY); doc.text(':', dTX, currentY); doc.text(l.venue, dIX, currentY);
-    currentY += 7;
-    doc.text('Acara', detailX, currentY); doc.text(':', dTX, currentY); doc.text(l.agenda, dIX, currentY);
-    
-    currentY += 15; // Jarak ke penutup
-    doc.text('Demikian undangan ini kami sampaikan, atas kehadirannya diucapkan terima kasih.', marginKiri, currentY);
+    doc.text('Demikian undangan ini kami sampaikan, atas kehadirannya diucapkan terima kasih.', marginKiri, y);
+    y += 10; // Jarak setelah penutup
   } else {
-    // LOGIKA TEXT WRAPPING SUPAYA TIDAK NABRAK
+    // Logic Text Wrapping (Supaya isi surat panjang tidak nabrak bawah)
     const isiSurat = l.body || '';
-    const textWidth = 175; // Lebar area teks (215 - 20 - 20)
-    
-    // Pecah teks panjang menjadi array baris-baris agar bisa dihitung tingginya
+    const textWidth = 175;
     const textLines = doc.splitTextToSize(isiSurat, textWidth);
     
-    // Tulis teks dengan Justify
-    doc.text(textLines, marginKiri, currentY, { align: 'justify', maxWidth: textWidth });
+    doc.text(textLines, marginKiri, y, { align: 'justify', maxWidth: textWidth });
     
-    // Update posisi Y berdasarkan jumlah baris yang baru ditulis
-    currentY += (textLines.length * lineHeight) + 5; 
+    // Hitung tinggi teks yang baru ditulis (jumlah baris * 6mm)
+    const tinggiBlockTeks = textLines.length * 6; 
+    y += tinggiBlockTeks + 6; // Update posisi Y ke bawah teks
     
-    doc.text('Demikian surat ini kami sampaikan untuk dipergunakan sebagaimana mestinya.', marginKiri, currentY);
+    doc.text('Demikian surat ini kami sampaikan untuk dipergunakan sebagaimana mestinya.', marginKiri, y);
+    y += 10; // Jarak setelah penutup
   }
 
-  // 6. TANDA TANGAN GANDA (POSISI DINAMIS)
-  // Pastikan tanda tangan tidak terlalu mepet dengan teks terakhir
-  // Kita set minimal turun 20mm dari teks terakhir, ATAU set di posisi standar jika surat pendek
-  // Tapi supaya aman dan tidak nabrak, kita pakai sistem 'currentY + spacing'
+  // --- TANDA TANGAN (FIX MENUMPUK) ---
   
-  let ttdStartBase = currentY + 20; 
-  
-  // Opsional: Kalau suratnya pendek sekali, biar tanda tangan tidak terlalu naik, kita kasih batas minimal
-  // Misal minimal di Y = 200. Tapi kalau teks panjang, dia ikut turun.
-  if (ttdStartBase < 200) ttdStartBase = 200; 
+  // 1. Pastikan Tanda Tangan tidak terlalu naik.
+  // Jika surat pendek, paksa turun ke posisi Y=210 (biar agak di bawah).
+  // Jika surat panjang, ikuti posisi terakhir (y + 20).
+  y = Math.max(y + 20, 210);
 
-  const kiriX = 50;  
-  const kananX = 165; 
-  
-  // Header Tanda Tangan
+  // 2. Header Organisasi
   doc.setFont('times', 'bold');
-  doc.text('Pengurus Ranting Kalijaga', 107.5, ttdStartBase, { align: 'center' });
+  doc.text('Pengurus Ranting Kalijaga', centerPage, y, { align: 'center' });
   
-  // Jabatan (Turun 7mm dari Header) -> TIDAK AKAN NABRAK LAGI
-  const jabatanY = ttdStartBase + 7;
+  // 3. Jabatan (BERI JARAK 10mm / 1cm DARI HEADER)
+  y += 10; 
   doc.setFont('times', 'normal');
-  doc.text('Ketua,', kiriX, jabatanY, { align: 'center' });
-  doc.text('Sekretaris,', kananX, jabatanY, { align: 'center' });
+  doc.text('Ketua,', ttdKiri, y, { align: 'center' });
+  doc.text('Sekretaris,', ttdKanan, y, { align: 'center' });
   
-  // Nama Pejabat (Turun 30mm dari Jabatan untuk ruang tanda tangan)
-  const namaY = jabatanY + 30;
+  // 4. Ruang Tanda Tangan (BERI JARAK 30mm / 3cm)
+  y += 30;
+  
+  // 5. Nama Pejabat
   doc.setFont('times', 'bold');
   
-  // KIRI
-  doc.text('DENDI SUPARMAN, S.Pd.SD', kiriX, namaY, { align: 'center' });
-  doc.line(kiriX - 28, namaY + 1, kiriX + 28, namaY + 1); // Garis bawah
+  // Kiri (Ketua)
+  doc.text('DENDI SUPARMAN, S.Pd.SD', ttdKiri, y, { align: 'center' });
+  doc.line(ttdKiri - 28, y + 1, ttdKiri + 28, y + 1); // Garis bawah
   doc.setFont('times', 'normal');
-  doc.text('NPA. 00001', kiriX, namaY + 6, { align: 'center' });
-  
-  // KANAN
-  doc.setFont('times', 'bold');
-  doc.text('ABDY EKA PRASETIA, S.Pd', kananX, namaY, { align: 'center' });
-  doc.line(kananX - 28, namaY + 1, kananX + 28, namaY + 1); // Garis bawah
-  doc.setFont('times', 'normal');
-  doc.text('NPA. 00003', kananX, namaY + 6, { align: 'center' });
+  doc.text('NPA. 00001', ttdKiri, y + 6, { align: 'center' }); // NPA turun 6mm
 
-  // Output
+  // Kanan (Sekretaris)
+  doc.setFont('times', 'bold');
+  doc.text('ABDY EKA PRASETIA, S.Pd', ttdKanan, y, { align: 'center' });
+  doc.line(ttdKanan - 28, y + 1, ttdKanan + 28, y + 1); // Garis bawah
+  doc.setFont('times', 'normal');
+  doc.text('NPA. 00003', ttdKanan, y + 6, { align: 'center' }); // NPA turun 6mm
+
+  // --- OUTPUT ---
   if (action === 'preview') { 
       setPdfUrl(doc.output('bloburl')); 
       setCurrentLetter(l); 
