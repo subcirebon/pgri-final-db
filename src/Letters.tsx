@@ -1,22 +1,22 @@
 const generatePDF = (l: Letter, action: 'preview' | 'download') => {
-  // 1. SETUP KERTAS F4
+  // 1. SETUP
   const doc = new jsPDF({ unit: 'mm', format: [215, 330] });
-  
-  // Konfigurasi Halaman
   const marginKiri = 20;
-  const lebarTeks = 175; // 215 - 20 - 20
+  const lebarTeks = 175; 
   const centerPage = 107.5; 
   const ttdKiri = 55;       
   const ttdKanan = 160;     
   
-  // --- Cursor System ---
-  let y = 55; // Mulai dari 5.5 cm
+  // Cursor System
+  let y = 55; 
+  
+  // Fungsi turun manual (agar kodingan rapi)
   const turun = (mm: number) => { y += mm; };
 
   doc.setFont('times', 'normal');
   doc.setFontSize(12);
 
-  // --- HEADER: TANGGAL & NOMOR ---
+  // --- HEADER ---
   doc.text(`Cirebon, ${formatTanggalIndo(l.date)}`, 145, y); 
   turun(10); 
   
@@ -43,55 +43,45 @@ const generatePDF = (l: Letter, action: 'preview' | 'download') => {
   doc.text('Dengan hormat,', marginKiri, y);
   turun(8);
 
-  // --- ISI SURAT (METODE ANTI-ERROR) ---
-  if (l.type === 'UNDANGAN') {
-    doc.text('Mengharap kehadiran Bapak/Ibu Anggota PGRI Ranting Kalijaga pada:', marginKiri, y);
-    turun(8);
-    
-    const detailX = 30; const dTX = 58; const dIX = 61;
-    doc.text('Hari/Tanggal', detailX, y); doc.text(':', dTX, y); doc.text(l.event_date, dIX, y);
-    turun(7);
-    doc.text('Tempat', detailX, y); doc.text(':', dTX, y); doc.text(l.venue, dIX, y);
-    turun(7);
-    doc.text('Acara', detailX, y); doc.text(':', dTX, y); doc.text(l.agenda, dIX, y);
-    turun(12);
-    
-    doc.text('Demikian undangan ini kami sampaikan, atas kehadirannya diucapkan terima kasih.', marginKiri, y);
-    turun(10); 
-  } else {
-    // FIX UTAMA DISINI:
-    const isiSurat = l.body || '';
-    
-    // 1. Kita "paksa" pecah teks menjadi array baris berdasarkan lebar kertas
-    // Ini akan menghormati "Enter" (newline) dan teks panjang
-    const barisTeks = doc.splitTextToSize(isiSurat, lebarTeks);
-    
-    // 2. Kita cetak baris demi baris
-    // (Menggunakan barisTeks langsung memastikan apa yang dihitung = yang dicetak)
-    doc.text(barisTeks, marginKiri, y, { align: 'justify', maxWidth: lebarTeks });
-    
-    // 3. Hitung tinggi REAL berdasarkan jumlah baris yang terbentuk
-    // Estimasi 6.5mm per baris (cukup longgar untuk Times New Roman 12pt)
-    const tinggiBlock = barisTeks.length * 6.5; 
-    
-    // 4. Update Cursor Y
-    turun(tinggiBlock + 10); // Tambah 10mm jarak aman ke paragraf penutup
-    
-    doc.text('Demikian surat ini kami sampaikan untuk dipergunakan sebagaimana mestinya.', marginKiri, y);
-    turun(15); // Jarak agak jauh ke tanda tangan
-  }
-
-  // --- TANDA TANGAN (AUTO TURUN) ---
+  // --- ISI SURAT (METODE LOOPING / BARIS DEMI BARIS) ---
+  // Ini solusi paling aman. Kita cetak satu per satu barisnya.
   
-  // SAFETY: Kalau surat pendek, minimal di Y=200.
-  if (y < 200) {
-      y = 200; 
-  } 
+  const isiSurat = l.type === 'UNDANGAN' 
+    ? `Mengharap kehadiran Bapak/Ibu pada:\nHari/Tanggal: ${l.event_date}\nTempat: ${l.venue}\nAcara: ${l.agenda}\n\nDemikian undangan ini kami sampaikan.`
+    : (l.body || '') + '\n\nDemikian surat ini kami sampaikan untuk dipergunakan sebagaimana mestinya.';
 
-  // AUTO PAGE BREAK: Kalau sudah mepet bawah kertas (280mm), pindah halaman
-  if (y > 280) {
+  // 1. Pecah teks panjang menjadi potongan baris yang pas dengan lebar kertas
+  const barisTeks = doc.splitTextToSize(isiSurat, lebarTeks);
+
+  // 2. Loop: Cetak baris -> Turun -> Cek Halaman -> Ulangi
+  barisTeks.forEach((baris: string) => {
+      // Cek apakah kertas sudah mau habis? (batas di Y=280)
+      if (y > 280) {
+          doc.addPage();
+          y = 40; // Reset ke atas halaman baru
+      }
+      
+      // Cetak baris tersebut
+      doc.text(baris, marginKiri, y, { align: 'justify', maxWidth: lebarTeks });
+      
+      // Turunkan cursor 6mm untuk baris berikutnya
+      turun(6); 
+  });
+
+  // --- TANDA TANGAN ---
+  
+  // Beri jarak dari teks terakhir
+  turun(10);
+
+  // SAFETY CHECK: 
+  // Pastikan tanda tangan tidak terpotong di bawah kertas.
+  // Jika sisa ruang < 50mm, mending pindah halaman sekalian biar rapi.
+  if (y > 250) { 
       doc.addPage();
-      y = 40; // Reset ke atas di halaman baru
+      y = 40;
+  } else if (y < 200) {
+      // Kalau suratnya pendek banget, minimal TTD di posisi 200 (biar ga terlalu naik)
+      y = 200;
   }
 
   // Header Organisasi
