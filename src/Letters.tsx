@@ -1,16 +1,16 @@
 const generatePDF = (l: Letter, action: 'preview' | 'download') => {
-  // 1. SETUP KERTAS F4 (215mm x 330mm)
+  // 1. SETUP KERTAS F4
   const doc = new jsPDF({ unit: 'mm', format: [215, 330] });
   
-  // --- KONFIGURASI ---
+  // Konfigurasi Halaman
   const marginKiri = 20;
-  const lebarTeks = 175; // Area tulis (215 - 20 - 20)
+  const lebarTeks = 175; // 215 - 20 - 20
   const centerPage = 107.5; 
   const ttdKiri = 55;       
   const ttdKanan = 160;     
   
-  // Helper function untuk geser cursor (biar rapi)
-  let y = 55; // Posisi awal (5.5 cm dari atas)
+  // --- Cursor System ---
+  let y = 55; // Mulai dari 5.5 cm
   const turun = (mm: number) => { y += mm; };
 
   doc.setFont('times', 'normal');
@@ -43,7 +43,7 @@ const generatePDF = (l: Letter, action: 'preview' | 'download') => {
   doc.text('Dengan hormat,', marginKiri, y);
   turun(8);
 
-  // --- ISI SURAT (AUTO-HEIGHT / SOLUSI FIX) ---
+  // --- ISI SURAT (METODE ANTI-ERROR) ---
   if (l.type === 'UNDANGAN') {
     doc.text('Mengharap kehadiran Bapak/Ibu Anggota PGRI Ranting Kalijaga pada:', marginKiri, y);
     turun(8);
@@ -59,40 +59,39 @@ const generatePDF = (l: Letter, action: 'preview' | 'download') => {
     doc.text('Demikian undangan ini kami sampaikan, atas kehadirannya diucapkan terima kasih.', marginKiri, y);
     turun(10); 
   } else {
-    // 1. Ambil Isi Surat
+    // FIX UTAMA DISINI:
     const isiSurat = l.body || '';
-
-    // 2. HITUNG TINGGI TEXT SECARA OTOMATIS (JURUS BARU)
-    // Kita minta jsPDF mengukur: "Kalau teks ini diprint dengan lebar 175, butuh tinggi berapa?"
-    const dims = doc.getTextDimensions(isiSurat, { maxWidth: lebarTeks });
     
-    // 3. Print Teks
-    // align: justify membuat kanan-kiri rata
-    doc.text(isiSurat, marginKiri, y, { align: 'justify', maxWidth: lebarTeks });
+    // 1. Kita "paksa" pecah teks menjadi array baris berdasarkan lebar kertas
+    // Ini akan menghormati "Enter" (newline) dan teks panjang
+    const barisTeks = doc.splitTextToSize(isiSurat, lebarTeks);
     
-    // 4. Update Cursor Y sesuai tinggi asli text
-    // Kita tambah dims.h (tinggi teks) + 8mm (jarak aman ke penutup)
-    turun(dims.h + 8);
+    // 2. Kita cetak baris demi baris
+    // (Menggunakan barisTeks langsung memastikan apa yang dihitung = yang dicetak)
+    doc.text(barisTeks, marginKiri, y, { align: 'justify', maxWidth: lebarTeks });
     
-    // 5. Penutup
+    // 3. Hitung tinggi REAL berdasarkan jumlah baris yang terbentuk
+    // Estimasi 6.5mm per baris (cukup longgar untuk Times New Roman 12pt)
+    const tinggiBlock = barisTeks.length * 6.5; 
+    
+    // 4. Update Cursor Y
+    turun(tinggiBlock + 10); // Tambah 10mm jarak aman ke paragraf penutup
+    
     doc.text('Demikian surat ini kami sampaikan untuk dipergunakan sebagaimana mestinya.', marginKiri, y);
-    turun(10); 
+    turun(15); // Jarak agak jauh ke tanda tangan
   }
 
-  // --- TANDA TANGAN (ANTI-NABRAK & AUTO PAGE BREAK) ---
+  // --- TANDA TANGAN (AUTO TURUN) ---
   
-  // SAFETY: Pastikan posisi minimal di Y=200 biar tidak terlalu naik kalau surat pendek.
-  // Tapi kalau surat panjang (y > 200), dia akan pakai posisi y terakhir + 20mm.
+  // SAFETY: Kalau surat pendek, minimal di Y=200.
   if (y < 200) {
       y = 200; 
-  } else {
-      turun(20); 
-  }
+  } 
 
-  // CEK HALAMAN BARU: Kalau Y sudah di ujung kertas (misal > 270), pindah halaman.
-  if (y > 270) {
+  // AUTO PAGE BREAK: Kalau sudah mepet bawah kertas (280mm), pindah halaman
+  if (y > 280) {
       doc.addPage();
-      y = 40; // Mulai dari atas di halaman baru
+      y = 40; // Reset ke atas di halaman baru
   }
 
   // Header Organisasi
@@ -106,15 +105,16 @@ const generatePDF = (l: Letter, action: 'preview' | 'download') => {
   
   turun(30); // Ruang Tanda Tangan
   
+  // Nama Pejabat
   doc.setFont('times', 'bold');
   
-  // Kiri (Ketua)
+  // Kiri
   doc.text('DENDI SUPARMAN, S.Pd.SD', ttdKiri, y, { align: 'center' });
   doc.line(ttdKiri - 28, y + 1, ttdKiri + 28, y + 1); 
   doc.setFont('times', 'normal');
   doc.text('NPA. 00001', ttdKiri, y + 6, { align: 'center' }); 
 
-  // Kanan (Sekretaris)
+  // Kanan
   doc.setFont('times', 'bold');
   doc.text('ABDY EKA PRASETIA, S.Pd', ttdKanan, y, { align: 'center' });
   doc.line(ttdKanan - 28, y + 1, ttdKanan + 28, y + 1); 
