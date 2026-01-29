@@ -1,91 +1,75 @@
 import React, { useState, useEffect, useRef } from 'react'; 
-import { Outlet, NavLink } from 'react-router-dom';
+import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import { 
   LayoutDashboard, Users, Wallet, Mail, Shield, Info, LogOut, Menu, X, 
-  HeartHandshake, Building2, Crown, User, Camera, ChevronDown, Loader2, RefreshCw
+  HeartHandshake, Building2, Crown, UserCog, User, Camera, ChevronDown, Loader2 
 } from 'lucide-react';
 import { supabase } from './supabaseClient'; 
 
-const Layout = ({ onLogout }: { onLogout: () => void }) => {
+// Props yang diterima dari App.tsx
+interface LayoutProps {
+  onLogout: () => void;
+  userRole: string;
+  userName: string;
+}
+
+const Layout = ({ onLogout, userRole, userName }: LayoutProps) => {
   // --- STATE ---
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   
-  // STATE DINAMIS: Mengambil ID dari penyimpanan browser, default ke 1
-  const [activeId, setActiveId] = useState<number>(() => {
-    const saved = localStorage.getItem('pgri_active_id');
-    return saved ? parseInt(saved) : 1;
-  });
-
-  const [userData, setUserData] = useState({
-    name: 'Memuat...',
-    jabatan: 'Anggota PGRI',
-    avatar_url: '' as string | null
-  });
-  
+  // State khusus untuk Avatar URL (karena ini dimuat terpisah dari database)
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  const location = useLocation(); // Untuk menandai menu aktif
 
-  // --- 1. LOAD DATA BERDASARKAN ACTIVE ID ---
+  // --- 1. LOAD FOTO PROFIL DARI DATABASE ---
   useEffect(() => {
-    const fetchUserProfile = async () => {
-      try {
-        setUserData(prev => ({ ...prev, name: 'Memuat...' })); // Efek loading
-        
-        const { data, error } = await supabase
-          .from('members')
-          .select('name, teacher_type, avatar_url')
-          .eq('id', activeId) // <--- PENTING: ID sekarang dinamis!
-          .single();
+    const loadUserAvatar = async () => {
+      // Ambil ID user yang sedang login dari penyimpanan browser
+      const storedId = localStorage.getItem('pgri_user_id');
+      
+      if (storedId) {
+        try {
+          const { data, error } = await supabase
+            .from('members')
+            .select('avatar_url')
+            .eq('id', storedId)
+            .single();
 
-        if (data) {
-          setUserData({
-            name: data.name || `User ID ${activeId}`,
-            jabatan: data.teacher_type || 'Anggota PGRI',
-            avatar_url: data.avatar_url || null
-          });
-        } else {
-          // Jika ID tidak ditemukan di database
-          setUserData({
-            name: 'User Tidak Ditemukan',
-            jabatan: '-',
-            avatar_url: null
-          });
+          if (data && !error) {
+            setAvatarUrl(data.avatar_url);
+          }
+        } catch (err) {
+          console.error("Gagal memuat foto profil:", err);
         }
-      } catch (error) {
-        console.error("Error fetch profile:", error);
       }
     };
 
-    fetchUserProfile();
-  }, [activeId]); // Dijalankan ulang setiap kali activeId berubah
-
-  // --- 2. FUNGSI GANTI ID (FITUR DEV) ---
-  const switchUser = (newId: string) => {
-    const id = parseInt(newId);
-    if (!isNaN(id) && id > 0) {
-      localStorage.setItem('pgri_active_id', id.toString());
-      setActiveId(id);
-      setIsProfileOpen(false);
-      // alert(`Berhasil pindah ke User ID: ${id}`);
-    }
-  };
+    loadUserAvatar();
+  }, []);
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
-  // --- 3. FUNGSI UPLOAD FOTO (SESUAI ID AKTIF) ---
+  // --- 2. FUNGSI UPLOAD FOTO KE SUPABASE ---
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
+
+    // Ambil ID User
+    const storedId = localStorage.getItem('pgri_user_id');
+    if (!storedId) return alert("Sesi kadaluarsa, silakan login ulang.");
 
     try {
       setUploading(true);
       const file = e.target.files[0];
       const fileExt = file.name.split('.').pop();
-      // Nama file unik per user
-      const fileName = `${activeId}-${Date.now()}.${fileExt}`;
+      // Nama file unik: ID-TIMESTAMP.jpg
+      const fileName = `${storedId}-${Date.now()}.${fileExt}`;
       const filePath = `${fileName}`;
 
-      // A. Upload ke Storage
+      // A. Upload File Fisik ke Storage
       const { error: uploadError } = await supabase.storage
         .from('avatars')
         .upload(filePath, file);
@@ -99,17 +83,17 @@ const Layout = ({ onLogout }: { onLogout: () => void }) => {
       
       const publicUrl = urlData.publicUrl;
 
-      // C. Simpan ke Database (Sesuai ID Aktif)
+      // C. Simpan Link ke Database (Tabel members)
       const { error: updateError } = await supabase
         .from('members')
         .update({ avatar_url: publicUrl })
-        .eq('id', activeId);
+        .eq('id', storedId);
 
       if (updateError) throw updateError;
 
       // D. Update Tampilan
-      setUserData(prev => ({ ...prev, avatar_url: publicUrl }));
-      alert(`Foto untuk User ID ${activeId} berhasil diperbarui!`);
+      setAvatarUrl(publicUrl);
+      alert('Foto profil berhasil diperbarui!');
       setIsProfileOpen(false);
 
     } catch (error: any) {
@@ -123,12 +107,19 @@ const Layout = ({ onLogout }: { onLogout: () => void }) => {
     fileInputRef.current?.click();
   };
 
+  // Helper untuk menampilkan Badge Role
+  const getRoleBadge = () => {
+    if (userRole === 'super_admin') return <span className="flex items-center gap-1 text-[10px] bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-full font-bold border border-yellow-200"><Crown size={10}/> Super Admin</span>;
+    if (userRole === 'admin') return <span className="flex items-center gap-1 text-[10px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-bold border border-blue-200"><UserCog size={10}/> Admin</span>;
+    return <span className="flex items-center gap-1 text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-bold border border-gray-200"><User size={10}/> Anggota</span>;
+  };
+
   return (
     <div className="flex min-h-screen bg-gray-50 font-sans relative">
       {/* OVERLAY MOBILE */}
       {isSidebarOpen && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-50 z-20 md:hidden" 
+          className="fixed inset-0 bg-black/50 z-20 md:hidden" 
           onClick={toggleSidebar}
         />
       )}
@@ -151,14 +142,14 @@ const Layout = ({ onLogout }: { onLogout: () => void }) => {
         
         <nav className="p-4 space-y-2 overflow-y-auto flex-1">
           <NavItem to="/" icon={<LayoutDashboard size={20} />} label="Dashboard" onClick={() => setIsSidebarOpen(false)} />
-          <NavItem to="/info" icon={<Info size={20} />} label="Info dan Berita" onClick={() => setIsSidebarOpen(false)} />
+          <NavItem to="/news" icon={<Info size={20} />} label="Info dan Berita" onClick={() => setIsSidebarOpen(false)} />
           <NavItem to="/members" icon={<Users size={20} />} label="Data Anggota" onClick={() => setIsSidebarOpen(false)} />
           <NavItem to="/finance" icon={<Wallet size={20} />} label="Keuangan" onClick={() => setIsSidebarOpen(false)} />
           <NavItem to="/donations" icon={<HeartHandshake size={20} />} label="Dana Sosial" onClick={() => setIsSidebarOpen(false)} />
           <NavItem to="/letters" icon={<Mail size={20} />} label="Surat Menyurat" onClick={() => setIsSidebarOpen(false)} />
           <NavItem to="/advocacy" icon={<Shield size={20} />} label="Advokasi Hukum" onClick={() => setIsSidebarOpen(false)} />
           <NavItem to="/counseling" icon={<HeartHandshake size={20} />} label="Konseling" onClick={() => setIsSidebarOpen(false)} />
-          <NavItem to="/profile" icon={<Building2 size={20} />} label="Tentang Kami" onClick={() => setIsSidebarOpen(false)} />
+          <NavItem to="/about" icon={<Building2 size={20} />} label="Tentang Kami" onClick={() => setIsSidebarOpen(false)} />
         </nav>
 
         <div className="p-4 bg-red-900 border-t border-red-800 text-center text-xs text-red-300/50">
@@ -166,14 +157,14 @@ const Layout = ({ onLogout }: { onLogout: () => void }) => {
         </div>
       </aside>
 
-      {/* KONTEN UTAMA */}
+      {/* MAIN CONTENT */}
       <main className="flex-1 md:ml-64 transition-all duration-300">
         <header className="bg-white p-4 shadow-sm border-b border-gray-200 flex justify-between items-center sticky top-0 z-10">
           <div className="flex items-center gap-3">
              <button onClick={toggleSidebar} className="md:hidden p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
                 <Menu size={24} />
              </button>
-             <h2 className="font-bold text-gray-700 text-sm md:text-lg">Selamat Datang, <span className="text-red-700 uppercase">Bapak & Ibu Guru Hebat!</span></h2>
+             <h2 className="font-bold text-gray-700 text-sm md:text-lg">Selamat Datang, <span className="text-red-700 uppercase">{userName}</span>!</h2>
           </div>
 
           {/* --- AREA PROFIL --- */}
@@ -183,58 +174,34 @@ const Layout = ({ onLogout }: { onLogout: () => void }) => {
               className="flex items-center gap-3 p-1 pr-2 rounded-xl hover:bg-gray-50 transition-colors focus:outline-none border border-transparent hover:border-gray-100"
             >
               <div className="text-right hidden sm:block">
-                <p className="text-sm font-bold text-gray-800 flex items-center justify-end gap-1">
-                  <Crown size={14} className="text-yellow-500" />
-                  {userData.name}
-                </p>
-                <p className="text-xs text-gray-500 italic">{userData.jabatan}</p>
+                <div className="flex items-center justify-end gap-2 mb-0.5">
+                  <p className="text-sm font-bold text-gray-800">{userName}</p>
+                </div>
+                <div className="flex justify-end">{getRoleBadge()}</div>
               </div>
 
               <div className="h-10 w-10 rounded-full flex items-center justify-center font-bold bg-gray-500 border-2 border-gray-200 text-white shadow-sm overflow-hidden relative">
-                {userData.avatar_url ? (
-                  <img src={userData.avatar_url} alt="Profil" className="w-full h-full object-cover" />
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="Profil" className="w-full h-full object-cover" />
                 ) : (
-                  <span>{userData.name.charAt(0)}</span>
+                  <span>{userName.charAt(0)}</span>
                 )}
               </div>
               
               <ChevronDown size={16} className={`text-gray-400 transition-transform duration-200 ${isProfileOpen ? 'rotate-180' : ''}`} />
             </button>
 
-            {/* --- DROPDOWN --- */}
+            {/* --- DROPDOWN MENU --- */}
             {isProfileOpen && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setIsProfileOpen(false)}></div>
-                <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-gray-100 z-20 overflow-hidden animate-in fade-in zoom-in duration-200 origin-top-right">
+                <div className="absolute right-0 mt-2 w-60 bg-white rounded-xl shadow-xl border border-gray-100 z-20 overflow-hidden animate-in fade-in zoom-in duration-200 origin-top-right">
                   <div className="p-4 border-b border-gray-100 text-center bg-gray-50 sm:hidden">
-                    <p className="font-bold text-gray-800">{userData.name}</p>
-                    <p className="text-xs text-gray-500">{userData.jabatan}</p>
+                    <p className="font-bold text-gray-800">{userName}</p>
+                    <div className="flex justify-center mt-1">{getRoleBadge()}</div>
                   </div>
                   
                   <div className="p-2 space-y-1">
-                    {/* FITUR DEV: GANTI USER ID */}
-                    <div className="px-4 py-2 bg-yellow-50 border border-yellow-100 rounded-lg mb-2">
-                      <p className="text-[10px] font-bold text-yellow-700 uppercase tracking-wider mb-1">Mode Developer</p>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-600">ID:</span>
-                        <input 
-                          type="number" 
-                          defaultValue={activeId}
-                          className="w-12 text-xs border border-gray-300 rounded px-1 py-0.5"
-                          onBlur={(e) => switchUser(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') switchUser((e.target as HTMLInputElement).value);
-                          }}
-                        />
-                        <button onClick={() => window.location.reload()} className="p-1 hover:bg-yellow-200 rounded text-yellow-700" title="Refresh">
-                          <RefreshCw size={12}/>
-                        </button>
-                      </div>
-                      <p className="text-[10px] text-gray-400 mt-1 italic leading-tight">Ganti angka & Enter untuk pindah akun.</p>
-                    </div>
-
-                    <div className="border-t border-gray-100 my-1"></div>
-
                     <button 
                       onClick={triggerFileInput} 
                       disabled={uploading}
@@ -244,7 +211,9 @@ const Layout = ({ onLogout }: { onLogout: () => void }) => {
                       {uploading ? 'Sedang Mengupload...' : 'Ubah Foto Profil'}
                     </button>
                     <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
-                    
+
+                    <div className="border-t border-gray-100 my-1"></div>
+
                     <button 
                       onClick={onLogout} 
                       className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-3 transition-colors font-bold"
@@ -259,14 +228,15 @@ const Layout = ({ onLogout }: { onLogout: () => void }) => {
         </header>
 
         <div className="p-4 md:p-8">
-          {/* Kirim role "admin" sebagai default untuk testing */}
-          <Outlet context={{ userRole: 'admin' }} />
+          {/* Outlet mengirimkan context userRole ke halaman anak */}
+          <Outlet context={{ userRole }} />
         </div>
       </main>
     </div>
   );
 };
 
+// Komponen Item Menu Navigasi
 const NavItem = ({ to, icon, label, onClick }: { to: string; icon: React.ReactNode; label: string, onClick?: () => void }) => (
   <NavLink 
     to={to} 
