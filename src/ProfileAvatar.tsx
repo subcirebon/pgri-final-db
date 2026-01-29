@@ -1,120 +1,81 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from './supabaseClient';
+import { Camera, Loader2 } from 'lucide-react';
 
 export default function ProfileAvatar() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [debugMsg, setDebugMsg] = useState(''); // Untuk menampilkan pesan di layar
-
-  // Pastikan ID ini ada di tabel 'members'. 
-  // Kamu bisa cek di Supabase > Table Editor > members > kolom id.
   const MEMBER_ID = 1; 
 
+  // Ambil data saat pertama kali dimuat
   useEffect(() => {
+    const getProfile = async () => {
+      try {
+        const { data } = await supabase
+          .from('members')
+          .select('avatar_url')
+          .eq('id', MEMBER_ID)
+          .single();
+        if (data?.avatar_url) setAvatarUrl(data.avatar_url);
+      } catch (error) { console.error(error); }
+    };
     getProfile();
   }, []);
-
-  const getProfile = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('members')
-        .select('avatar_url')
-        .eq('id', MEMBER_ID)
-        .single();
-
-      if (error) {
-        console.error('Gagal ambil data profil:', error);
-      } else if (data && data.avatar_url) {
-        setAvatarUrl(data.avatar_url);
-      }
-    } catch (error) {
-      console.error('Error:', error);
-    }
-  };
 
   const uploadAvatar = async (event: React.ChangeEvent<HTMLInputElement>) => {
     try {
       setUploading(true);
-      setDebugMsg('Mulai proses...');
-
-      if (!event.target.files || event.target.files.length === 0) {
-        throw new Error('Kamu belum memilih gambar!');
-      }
+      if (!event.target.files || event.target.files.length === 0) return;
 
       const file = event.target.files[0];
       const fileExt = file.name.split('.').pop();
       const fileName = `${MEMBER_ID}-${Date.now()}.${fileExt}`;
       const filePath = `${fileName}`;
 
-      // --- TAHAP 1: UPLOAD KE STORAGE ---
-      alert('Langkah 1: Mencoba upload ke Storage...');
-      const { error: uploadError } = await supabase.storage
-        .from('avatars') // Pastikan nama bucket di Supabase adalah 'avatars'
-        .upload(filePath, file);
+      // 1. Upload ke Storage
+      const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, file);
+      if (uploadError) throw uploadError;
 
-      if (uploadError) {
-        throw new Error('GAGAL di Storage: ' + uploadError.message);
-      }
-
-      // --- TAHAP 2: AMBIL LINK GAMBAR ---
+      // 2. Ambil Public URL
       const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
-      const publicUrl = data.publicUrl;
-      alert('Langkah 2: Upload sukses. Link gambar didapat: ' + publicUrl);
-
-      // --- TAHAP 3: SIMPAN LINK KE DATABASE ---
-      alert('Langkah 3: Mencoba simpan link ke Database...');
+      
+      // 3. Simpan ke Database
       const { error: updateError } = await supabase
         .from('members')
-        .update({ avatar_url: publicUrl })
+        .update({ avatar_url: data.publicUrl })
         .eq('id', MEMBER_ID);
 
-      if (updateError) {
-        throw new Error('GAGAL di Database: ' + updateError.message);
-      }
+      if (updateError) throw updateError;
 
-      alert('BERHASIL TOTAL! Database sudah diupdate.');
-      setAvatarUrl(publicUrl);
-      setDebugMsg('Upload Berhasil!');
+      // 4. Update State Lokal
+      setAvatarUrl(data.publicUrl);
+      
+      // 5. Reload halaman agar Header (Layout.tsx) juga terupdate fotonya
+      window.location.reload();
 
     } catch (error: any) {
-      alert('TERJADI ERROR: ' + error.message);
-      setDebugMsg('Error: ' + error.message);
+      alert('Gagal upload: ' + error.message);
     } finally {
       setUploading(false);
     }
   };
 
   return (
-    <div className="flex flex-col items-center gap-2">
-      <div className="relative group w-24 h-24">
-        <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-gray-200 shadow-sm mx-auto bg-white">
-          {avatarUrl ? (
-            <img
-              src={avatarUrl}
-              alt="Avatar"
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center bg-indigo-100 text-indigo-500 font-bold text-xl">
-              DS
-            </div>
-          )}
-        </div>
-
-        {/* Overlay tombol upload */}
-        <label className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 text-white text-xs opacity-0 group-hover:opacity-100 rounded-full cursor-pointer transition-opacity">
-          {uploading ? '...' : 'Ganti Foto'}
-          <input
-            type="file"
-            accept="image/*"
-            onChange={uploadAvatar}
-            disabled={uploading}
-            className="hidden"
-          />
-        </label>
+    <div className="relative group mx-auto w-32 h-32">
+      <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-white shadow-md bg-white">
+        {avatarUrl ? (
+          <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full bg-indigo-50 flex items-center justify-center text-indigo-300">
+            <span className="text-4xl font-bold">DS</span>
+          </div>
+        )}
       </div>
-      {/* Pesan status untuk debugging */}
-      <p className="text-xs text-red-600 font-mono text-center max-w-[200px]">{debugMsg}</p>
+
+      <label className="absolute bottom-0 right-0 bg-indigo-600 text-white p-2 rounded-full shadow-lg cursor-pointer hover:bg-indigo-700 transition-all border-2 border-white">
+        {uploading ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
+        <input type="file" accept="image/*" onChange={uploadAvatar} disabled={uploading} className="hidden" />
+      </label>
     </div>
   );
 }
