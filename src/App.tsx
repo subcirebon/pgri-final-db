@@ -7,10 +7,10 @@ import Members from './Members';
 import Finance from './Finance';
 import Letters from './Letters';
 import Donations from './Donations';
-import News from './News';
+import Info from './Info';
 import Advocacy from './Advocacy';
 import Counseling from './Counseling';
-import About from './About';
+import Profile from './Profile';
 
 function App() {
   // STATE LOGIN
@@ -85,10 +85,10 @@ function App() {
         <Route path="finance" element={<Finance />} />
         <Route path="letters" element={<Letters />} />
         <Route path="donations" element={<Donations />} />
-        <Route path="news" element={<News />} />
+        <Route path="info" element={<Info />} />
         <Route path="advocacy" element={<Advocacy />} />
         <Route path="counseling" element={<Counseling />} />
-        <Route path="about" element={<About />} />
+        <Route path="profile" element={<Profile />} />
       </Route>
     </Routes>
   );
