@@ -2,23 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './Layout';
 import Dashboard from './Dashboard';
-import Login from './Login'; 
+import Login from './Login'; // Import Login baru kamu
 import Members from './Members';
 import Finance from './Finance';
 import Letters from './Letters';
 import Donations from './Donations';
-import Info from './Info';        // PERBAIKAN 1: Import sesuai nama komponen
+import News from './Info';
 import Advocacy from './Advocacy';
 import Counseling from './Counseling';
-import Profile from './Profile';  // PERBAIKAN 2: Import sesuai nama komponen
+import About from './Profile';
 
 function App() {
   // STATE LOGIN
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [userRole, setUserRole] = useState('user'); 
-  const [userName, setUserName] = useState('');     
+  const [userRole, setUserRole] = useState('user'); // Default 'user'
+  const [userName, setUserName] = useState('');     // Menyimpan Nama Asli
 
-  // Cek Session saat Refresh 
+  // Cek Session saat Refresh (Agar tidak logout sendiri)
   useEffect(() => {
     const storedAuth = localStorage.getItem('pgri_auth');
     const storedRole = localStorage.getItem('pgri_role');
@@ -31,12 +31,13 @@ function App() {
     }
   }, []);
 
-  // FUNGSI LOGIN 
+  // FUNGSI LOGIN (Dipanggil oleh Login.tsx)
   const handleLogin = (role: string, name: string) => {
     setIsAuthenticated(true);
     setUserRole(role);
     setUserName(name);
 
+    // Simpan ke Browser
     localStorage.setItem('pgri_auth', 'true');
     localStorage.setItem('pgri_role', role);
     localStorage.setItem('pgri_name', name);
@@ -72,7 +73,7 @@ function App() {
             <Layout 
               onLogout={handleLogout} 
               userRole={userRole} 
-              userName={userName} 
+              userName={userName} // Kirim Nama ke Layout
             /> 
           ) : (
             <Navigate to="/login" replace />
@@ -84,14 +85,9 @@ function App() {
         <Route path="finance" element={<Finance />} />
         <Route path="letters" element={<Letters />} />
         <Route path="donations" element={<Donations />} />
-        
-        {/* PERBAIKAN 3: Path 'news' memanggil komponen <Info /> */}
         <Route path="news" element={<Info />} />
-        
         <Route path="advocacy" element={<Advocacy />} />
         <Route path="counseling" element={<Counseling />} />
-        
-        {/* PERBAIKAN 4: Path 'about' memanggil komponen <Profile /> */}
         <Route path="about" element={<Profile />} />
       </Route>
     </Routes>
