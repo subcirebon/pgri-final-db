@@ -10,7 +10,7 @@ import Donations from './Donations';
 import News from './Info';
 import Advocacy from './Advocacy';
 import Counseling from './Counseling';
-import Profile from './Profile';
+import About from './Profile';
 
 function App() {
   // STATE LOGIN
@@ -88,7 +88,7 @@ function App() {
         <Route path="news" element={<Info />} />
         <Route path="advocacy" element={<Advocacy />} />
         <Route path="counseling" element={<Counseling />} />
-        <Route path="profile" element={<Profile />} />
+        <Route path="about" element={<Profile />} />
       </Route>
     </Routes>
   );
