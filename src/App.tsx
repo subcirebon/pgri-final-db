@@ -7,7 +7,7 @@ import Members from './Members';
 import Finance from './Finance';
 import Letters from './Letters';
 import Donations from './Donations';
-import Info from './Info';
+import News from './News';
 import Advocacy from './Advocacy';
 import Counseling from './Counseling';
 import Profile from './Profile';
@@ -85,7 +85,7 @@ function App() {
         <Route path="finance" element={<Finance />} />
         <Route path="letters" element={<Letters />} />
         <Route path="donations" element={<Donations />} />
-        <Route path="info" element={<Info />} />
+        <Route path="news" element={<News />} />
         <Route path="advocacy" element={<Advocacy />} />
         <Route path="counseling" element={<Counseling />} />
         <Route path="profile" element={<Profile />} />
