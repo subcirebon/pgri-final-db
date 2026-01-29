@@ -1,12 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { supabase } from './supabaseClient'; // Pastikan path ini sesuai dengan file supabase kamu
+import { supabase } from './supabaseClient';
 
 export default function ProfileAvatar() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const MEMBER_ID = 1; // ID User yang sedang login (Ganti nanti jika sudah ada sistem Login)
+  const [debugMsg, setDebugMsg] = useState(''); // Untuk menampilkan pesan di layar
 
-  // 1. Ambil Foto saat komponen dimuat
+  // Pastikan ID ini ada di tabel 'members'. 
+  // Kamu bisa cek di Supabase > Table Editor > members > kolom id.
+  const MEMBER_ID = 1; 
+
   useEffect(() => {
     getProfile();
   }, []);
@@ -20,7 +23,7 @@ export default function ProfileAvatar() {
         .single();
 
       if (error) {
-        console.warn('Gagal ambil profil:', error.message);
+        console.error('Gagal ambil data profil:', error);
       } else if (data && data.avatar_url) {
         setAvatarUrl(data.avatar_url);
       }
@@ -29,13 +32,13 @@ export default function ProfileAvatar() {
     }
   };
 
-  // 2. Fungsi Upload Foto
   const uploadAvatar = async (event: React.ChangeEvent<HTMLInputElement>) => {
     try {
       setUploading(true);
+      setDebugMsg('Mulai proses...');
 
       if (!event.target.files || event.target.files.length === 0) {
-        throw new Error('Pilih gambar dulu!');
+        throw new Error('Kamu belum memilih gambar!');
       }
 
       const file = event.target.files[0];
@@ -43,68 +46,75 @@ export default function ProfileAvatar() {
       const fileName = `${MEMBER_ID}-${Date.now()}.${fileExt}`;
       const filePath = `${fileName}`;
 
-      // A. Upload ke Storage
+      // --- TAHAP 1: UPLOAD KE STORAGE ---
+      alert('Langkah 1: Mencoba upload ke Storage...');
       const { error: uploadError } = await supabase.storage
-        .from('avatars') // Pastikan nama bucket ini sesuai Langkah 1
+        .from('avatars') // Pastikan nama bucket di Supabase adalah 'avatars'
         .upload(filePath, file);
 
       if (uploadError) {
-        throw uploadError;
+        throw new Error('GAGAL di Storage: ' + uploadError.message);
       }
 
-      // B. Dapatkan URL Publik
+      // --- TAHAP 2: AMBIL LINK GAMBAR ---
       const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
       const publicUrl = data.publicUrl;
+      alert('Langkah 2: Upload sukses. Link gambar didapat: ' + publicUrl);
 
-      // C. Simpan URL ke Database
+      // --- TAHAP 3: SIMPAN LINK KE DATABASE ---
+      alert('Langkah 3: Mencoba simpan link ke Database...');
       const { error: updateError } = await supabase
         .from('members')
         .update({ avatar_url: publicUrl })
         .eq('id', MEMBER_ID);
 
       if (updateError) {
-        throw updateError;
+        throw new Error('GAGAL di Database: ' + updateError.message);
       }
 
-      // D. Update tampilan
+      alert('BERHASIL TOTAL! Database sudah diupdate.');
       setAvatarUrl(publicUrl);
-      alert('Foto profil berhasil diperbarui!');
+      setDebugMsg('Upload Berhasil!');
 
     } catch (error: any) {
-      alert('Gagal upload: ' + error.message);
+      alert('TERJADI ERROR: ' + error.message);
+      setDebugMsg('Error: ' + error.message);
     } finally {
       setUploading(false);
     }
   };
 
   return (
-    <div className="relative group">
-      <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-gray-200 shadow-sm mx-auto">
-        {avatarUrl ? (
-          <img
-            src={avatarUrl}
-            alt="Avatar"
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <div className="w-full h-full bg-indigo-100 flex items-center justify-center text-indigo-500 font-bold text-xl">
-            {/* Inisial Default jika belum ada foto */}
-            DS 
-          </div>
-        )}
-      </div>
+    <div className="flex flex-col items-center gap-2">
+      <div className="relative group w-24 h-24">
+        <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-gray-200 shadow-sm mx-auto bg-white">
+          {avatarUrl ? (
+            <img
+              src={avatarUrl}
+              alt="Avatar"
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-indigo-100 text-indigo-500 font-bold text-xl">
+              DS
+            </div>
+          )}
+        </div>
 
-      {/* Tombol Upload (Hanya muncul saat kursor diarahkan/hover) */}
-      <label className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 text-white text-xs opacity-0 group-hover:opacity-100 rounded-full cursor-pointer transition-opacity">
-        {uploading ? '...' : 'Ganti'}
-        <input
-          type="file"
-          accept="image/*"
-          onChange={uploadAvatar}
-          disabled={uploading}
-          className="hidden"
-        />
-      </label>
+        {/* Overlay tombol upload */}
+        <label className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 text-white text-xs opacity-0 group-hover:opacity-100 rounded-full cursor-pointer transition-opacity">
+          {uploading ? '...' : 'Ganti Foto'}
+          <input
+            type="file"
+            accept="image/*"
+            onChange={uploadAvatar}
+            disabled={uploading}
+            className="hidden"
+          />
+        </label>
+      </div>
+      {/* Pesan status untuk debugging */}
+      <p className="text-xs text-red-600 font-mono text-center max-w-[200px]">{debugMsg}</p>
     </div>
   );
 }
