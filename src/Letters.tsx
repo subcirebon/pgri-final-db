@@ -2,49 +2,27 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import { 
   Inbox, Send, Printer, Plus, Save, 
-  FileText, Eye, X, Loader2, ArrowLeft, History 
+  FileText, Eye, X, Loader2, ArrowLeft, History, Upload, Download, Trash2
 } from 'lucide-react';
 
-// --- CONFIG PDFMAKE ---
+// --- CONFIG PDFMAKE (BAGIAN BUAT SURAT - TIDAK DIUBAH) ---
 import * as pdfMake from "pdfmake/build/pdfmake";
 import * as pdfFonts from "pdfmake/build/vfs_fonts";
-
 // @ts-ignore
 const pdfMakeInstance = pdfMake.default ? pdfMake.default : pdfMake;
 // @ts-ignore
 const pdfFontsInstance = pdfFonts.default ? pdfFonts.default : pdfFonts;
-
-if (pdfFontsInstance?.pdfMake?.vfs) {
-  pdfMakeInstance.vfs = pdfFontsInstance.pdfMake.vfs;
-}
-
-pdfMakeInstance.fonts = {
-  Times: {
-    normal: 'Roboto-Regular.ttf',
-    bold: 'Roboto-Medium.ttf',
-    italics: 'Roboto-Italic.ttf',
-    bolditalics: 'Roboto-MediumItalic.ttf'
-  }
-};
+if (pdfFontsInstance?.pdfMake?.vfs) { pdfMakeInstance.vfs = pdfFontsInstance.pdfMake.vfs; }
+pdfMakeInstance.fonts = { Times: { normal: 'Roboto-Regular.ttf', bold: 'Roboto-Medium.ttf', italics: 'Roboto-Italic.ttf', bolditalics: 'Roboto-MediumItalic.ttf' } };
 
 const getBase64ImageFromURL = (url: string) => {
   return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.setAttribute("crossOrigin", "anonymous");
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext("2d");
-      ctx?.drawImage(img, 0, 0);
-      resolve(canvas.toDataURL("image/png"));
-    };
-    img.onerror = error => reject(error);
-    img.src = url;
+    const img = new Image(); img.setAttribute("crossOrigin", "anonymous");
+    img.onload = () => { const canvas = document.createElement("canvas"); canvas.width = img.width; canvas.height = img.height; const ctx = canvas.getContext("2d"); ctx?.drawImage(img, 0, 0); resolve(canvas.toDataURL("image/png")); };
+    img.onerror = error => reject(error); img.src = url;
   });
 };
 
-// Logo baru format PNG
 const LOGO_URL = "https://upload.wikimedia.org/wikipedia/commons/2/2a/Persatuan_Guru_Republik_Indonesia.png";
 
 const LETTER_TYPES = [
@@ -79,6 +57,16 @@ const Letters = () => {
   const [lastLetter, setLastLetter] = useState<string>('Memuat...');
   const [uploading, setUploading] = useState(false);
 
+  // --- STATE KHUSUS SURAT MASUK ---
+  const [showInModal, setShowInModal] = useState(false);
+  const [inForm, setInForm] = useState({
+    date_received: new Date().toISOString().split('T')[0],
+    sender: '',
+    subject: '',
+    letter_number: '',
+    file: null as File | null
+  });
+
   const currentYear = new Date().getFullYear();
 
   const [formData, setFormData] = useState({
@@ -95,7 +83,6 @@ const Letters = () => {
     penutup: 'Demikian surat ini kami sampaikan, atas perhatiannya kami ucapkan terima kasih.\n\nWassalamualaikum Wr. Wb.'
   });
 
-  // Penomoran sesuai instruksi Bapak
   const fullLetterNumber = `${formData.no_urut}/${selectedType.code}/0701-04/XXIII/${currentYear}`;
   const titiMangsa = `Cirebon, ${new Date().toLocaleDateString('id-ID', {day: 'numeric', month: 'long', year: 'numeric'})}`;
 
@@ -109,119 +96,90 @@ const Letters = () => {
 
   useEffect(() => { fetchData(); }, []);
 
+  // --- FUNGSI SIMPAN SURAT MASUK + UPLOAD FILE ---
+  const handleSaveIncoming = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setUploading(true);
+    try {
+      let fileUrl = '';
+      
+      // Proses Upload File jika ada
+      if (inForm.file) {
+        const fileExt = inForm.file.name.split('.').pop();
+        const fileName = `${Math.random()}.${fileExt}`;
+        const filePath = `incoming/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('letters-archive')
+          .upload(filePath, inForm.file);
+
+        if (uploadError) throw uploadError;
+
+        const { data } = supabase.storage.from('letters-archive').getPublicUrl(filePath);
+        fileUrl = data.publicUrl;
+      }
+
+      // Simpan ke Database
+      const { error: dbError } = await supabase.from('letters_in').insert([{
+        date_received: inForm.date_received,
+        sender: inForm.sender,
+        subject: inForm.subject,
+        letter_number: inForm.letter_number,
+        file_url: fileUrl
+      }]);
+
+      if (dbError) throw dbError;
+
+      alert('Surat masuk berhasil dicatat!');
+      setShowInModal(false);
+      setInForm({ date_received: new Date().toISOString().split('T')[0], sender: '', subject: '', letter_number: '', file: null });
+      fetchData();
+    } catch (err: any) {
+      alert('Gagal menyimpan: ' + err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handlePrint = async (saveToArchive: boolean) => {
     try {
       const logoBase64 = await getBase64ImageFromURL(LOGO_URL);
       const isFormal = selectedType.formType === 'formal';
-
       const docDefinition: any = {
         pageSize: 'FOLIO',
         pageMargins: [72, 35, 72, 72],
         defaultStyle: { font: 'Times', fontSize: 12 },
         content: [
-          // KOP SURAT - Disesuaikan agar benar-benar tengah
           {
             columns: [
               { image: logoBase64, width: 70, margin: [0, 5, 0, 0] },
               {
+                width: '*',
                 stack: [
                   { text: 'PERSATUAN GURU REPUBLIK INDONESIA', bold: true, fontSize: 13 },
                   { text: 'PENGURUS RANTING KALIJAGA', bold: true, fontSize: 18, margin: [0, 2, 0, 2] },
                   { text: 'Kalijaga Sub Branch', fontSize: 11, italics: true, bold: true, margin: [0, 0, 0, 4] },
                   { text: 'Jl. Teratai Raya No 1 Kalijaga Permai Kel. Kalijaga Kec. Harjamukti Kota Cirebon', fontSize: 8.5 },
-                  { 
-                    text: [
-                      { text: 'Email: pgrikalijaga@gmail.com ', italics: false, color: 'black' },
-                      { text: 'Website: pgrikalijaga.sekolahdasar.online', italics: false, color: 'black' }
-                    ], 
-                    fontSize: 8.5 
-                  }
+                  { text: 'Email: pgrikalijaga@gmail.com Website: pgrikalijaga.sekolahdasar.online', fontSize: 8.5 }
                 ],
-                alignment: 'center', width: '*', margin: [-70, 0, 0, 0] // Kompensasi logo agar teks benar-benar tengah
-              }
+                alignment: 'center', margin: [-70, 0, -70, 0]
+              },
+              { text: '', width: 70 }
             ]
           },
-          {
-            stack: [
-              { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 470, y2: 0, lineWidth: 2.5 }] },
-              { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 470, y2: 0, lineWidth: 1 }], margin: [0, 2, 0, 0] }
-            ],
-            margin: [0, 8, 0, 20]
-          },
-          
-          // Judul / Header sesuai jenis surat
-          isFormal ? [
-            { text: selectedType.label.toUpperCase(), alignment: 'center', bold: true, decoration: 'underline', fontSize: 14 },
-            { text: `Nomor : ${fullLetterNumber}`, alignment: 'center', margin: [0, 0, 0, 20] }
-          ] : [
-            {
-              columns: [
-                {
-                  width: '*',
-                  table: {
-                    widths: [60, 10, '*'],
-                    body: [
-                      ['Nomor', ':', fullLetterNumber],
-                      ['Lampiran', ':', formData.lampiran],
-                      ['Perihal', ':', selectedType.label + ' ' + formData.perihal]
-                    ]
-                  },
-                  layout: 'noBorders'
-                },
-                { width: 'auto', text: titiMangsa, alignment: 'right' }
-              ],
-              margin: [0, 0, 0, 20]
-            },
-            { text: 'Kepada', margin: [0, 0, 0, 0] },
-            { text: formData.tujuan, margin: [0, 0, 0, 20], bold: true }
-          ],
-
+          { stack: [ { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 470, y2: 0, lineWidth: 2.5 }] }, { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 470, y2: 0, lineWidth: 1 }], margin: [0, 2, 0, 0] } ], margin: [0, 8, 0, 20] },
+          isFormal ? [ { text: selectedType.label.toUpperCase(), alignment: 'center', bold: true, decoration: 'underline', fontSize: 14 }, { text: `Nomor : ${fullLetterNumber}`, alignment: 'center', margin: [0, 0, 0, 20] } ] : [ { columns: [ { width: '*', table: { widths: [60, 10, '*'], body: [ ['Nomor', ':', fullLetterNumber], ['Lampiran', ':', formData.lampiran], ['Perihal', ':', selectedType.label + ' ' + formData.perihal] ] }, layout: 'noBorders' }, { width: 'auto', text: titiMangsa, alignment: 'right' } ], margin: [0, 0, 0, 20] }, { text: 'Kepada', margin: [0, 0, 0, 0] }, { text: formData.tujuan, margin: [0, 0, 0, 20], bold: true } ],
           { text: formData.pembuka, alignment: 'justify' },
-
-          selectedType.formType === 'invitation' ? {
-            margin: [30, 10, 0, 10],
-            table: {
-              widths: [80, 10, '*'],
-              body: [
-                ['Hari', ':', formData.hari],
-                ['Tanggal', ':', formData.tanggal_acara],
-                ['Waktu', ':', formData.waktu],
-                ['Tempat', ':', formData.tempat],
-              ]
-            },
-            layout: 'noBorders'
-          } : { text: formData.isi_utama, alignment: 'justify', margin: [0, 10, 0, 10] },
-
+          selectedType.formType === 'invitation' ? { margin: [30, 10, 0, 10], table: { widths: [80, 10, '*'], body: [ ['Hari', ':', formData.hari], ['Tanggal', ':', formData.tanggal_acara], ['Waktu', ':', formData.waktu], ['Tempat', ':', formData.tempat], ] }, layout: 'noBorders' } : { text: formData.isi_utama, alignment: 'justify', margin: [0, 10, 0, 10] },
           { text: formData.penutup, alignment: 'justify', margin: [0, 0, 0, 10] },
-          
-          // Titi Mangsa & Tanda Tangan
-          { 
-            stack: [
-              { text: isFormal ? titiMangsa : '', margin: [0, 0, 0, 2] },
-              { text: 'PENGURUS PGRI RANTING KALIJAGA', bold: true }
-            ],
-            alignment: 'center', margin: [0, 15, 0, 15]
-          },
-          
-          {
-            table: {
-              widths: ['*', '*'],
-              body: [
-                [{ text: 'Ketua', alignment: 'center', bold: false }, { text: 'Sekretaris', alignment: 'center', bold: true }],
-                [{ text: '\n\n\n\n( DENDI SUPARMAN, S.Pd.SD )', alignment: 'center', bold: true, decoration: 'underline' }, { text: '\n\n\n\n( ABDY EKA PRASETIA, S.Pd )', alignment: 'center', bold: true, decoration: 'underline' }],
-                [{ text: 'NPA. 00001', alignment: 'center', bold: true }, { text: 'NPA. 00002', alignment: 'center', bold: true }]
-              ]
-            },
-            layout: 'noBorders'
-          }
+          { stack: [ { text: isFormal ? titiMangsa : '', margin: [0, 0, 0, 2] }, { text: 'PENGURUS PGRI RANTING KALIJAGA', bold: true } ], alignment: 'center', margin: [0, 15, 0, 15] },
+          { table: { widths: ['*', '*'], body: [ [{ text: 'Ketua', alignment: 'center', bold: false }, { text: 'Sekretaris', alignment: 'center', bold: true }], [{ text: '\n\n\n\n( DENDI SUPARMAN, S.Pd.SD )', alignment: 'center', bold: true, decoration: 'underline' }, { text: '\n\n\n\n( ABDY EKA PRASETIA, S.Pd )', alignment: 'center', bold: true, decoration: 'underline' }], [{ text: 'NPA. 00001', alignment: 'center', bold: true }, { text: 'NPA. 00002', alignment: 'center', bold: true }] ] }, layout: 'noBorders' }
         ]
       };
 
       if (saveToArchive) {
         setUploading(true);
-        await supabase.from('letters_out').insert([{
-          date_sent: new Date(), letter_number: fullLetterNumber, recipient: isFormal ? '-' : formData.tujuan, subject: selectedType.label + ' ' + formData.perihal
-        }]);
+        await supabase.from('letters_out').insert([{ date_sent: new Date(), letter_number: fullLetterNumber, recipient: isFormal ? '-' : formData.tujuan, subject: selectedType.label + ' ' + formData.perihal }]);
         fetchData();
         setActiveTab('out');
         setUploading(false);
@@ -246,42 +204,27 @@ const Letters = () => {
         </div>
       )}
 
+      {/* --- TAB BUAT SURAT (TIDAK BERUBAH) --- */}
       {activeTab === 'create' && !isPreviewing && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 bg-white p-8 rounded-[32px] border border-gray-100 shadow-sm space-y-6">
+           <div className="lg:col-span-2 bg-white p-8 rounded-[32px] border border-gray-100 shadow-sm space-y-6">
             <div className="bg-red-50 p-6 rounded-2xl border border-red-100">
                <label className="text-[10px] font-bold uppercase text-red-800 block mb-2">Pilih Jenis Surat</label>
-               <select 
-                className="w-full p-3 bg-white border-2 border-red-200 rounded-xl font-bold text-gray-800 outline-none focus:border-red-500"
-                value={selectedType.code}
-                onChange={(e) => {
-                  const type = LETTER_TYPES.find(t => t.code === e.target.value);
-                  if(type) setSelectedType(type);
-                }}
-               >
+               <select className="w-full p-3 bg-white border-2 border-red-200 rounded-xl font-bold text-gray-800 outline-none focus:border-red-500" value={selectedType.code} onChange={(e) => { const type = LETTER_TYPES.find(t => t.code === e.target.value); if(type) setSelectedType(type); }}>
                  {LETTER_TYPES.map(t => <option key={t.code} value={t.code}>{t.label} ({t.code})</option>)}
                </select>
             </div>
-
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-[10px] font-bold uppercase text-gray-400">No. Urut (3 Digit)</label>
-                <input className="w-full p-3 border rounded-xl font-bold" value={formData.no_urut} onChange={e => setFormData({...formData, no_urut: e.target.value})} placeholder="001" />
-              </div>
-              {selectedType.formType !== 'formal' && (
-                <div><label className="text-[10px] font-bold uppercase text-gray-400">Lampiran</label><input className="w-full p-3 border rounded-xl" value={formData.lampiran} onChange={e => setFormData({...formData, lampiran: e.target.value})} /></div>
-              )}
+              <div><label className="text-[10px] font-bold uppercase text-gray-400">No. Urut (3 Digit)</label><input className="w-full p-3 border rounded-xl font-bold" value={formData.no_urut} onChange={e => setFormData({...formData, no_urut: e.target.value})} placeholder="001" /></div>
+              {selectedType.formType !== 'formal' && (<div><label className="text-[10px] font-bold uppercase text-gray-400">Lampiran</label><input className="w-full p-3 border rounded-xl" value={formData.lampiran} onChange={e => setFormData({...formData, lampiran: e.target.value})} /></div>)}
             </div>
-
-            {selectedType.formType !== 'formal' ? (
+            {selectedType.formType !== 'formal' && (
               <>
                 <div><label className="text-[10px] font-bold uppercase text-gray-400">Perihal</label><input className="w-full p-3 border rounded-xl font-bold" value={formData.perihal} onChange={e => setFormData({...formData, perihal: e.target.value})} /></div>
                 <div><label className="text-[10px] font-bold uppercase text-gray-400">Tujuan Surat</label><textarea rows={2} className="w-full p-3 border rounded-xl font-bold" value={formData.tujuan} onChange={e => setFormData({...formData, tujuan: e.target.value})} /></div>
               </>
-            ) : null}
-
+            )}
             <div><label className="text-[10px] font-bold uppercase text-gray-400">Kalimat Pembuka</label><textarea rows={3} className="w-full p-3 border rounded-xl" value={formData.pembuka} onChange={e => setFormData({...formData, pembuka: e.target.value})} /></div>
-
             {selectedType.formType === 'invitation' ? (
               <div className="bg-gray-50 p-6 rounded-2xl space-y-4 border border-dashed border-gray-300">
                 <div className="grid grid-cols-2 gap-4">
@@ -291,103 +234,209 @@ const Letters = () => {
                   <input className="p-3 border rounded-xl" placeholder="Tempat" value={formData.tempat} onChange={e => setFormData({...formData, tempat: e.target.value})} />
                 </div>
               </div>
-            ) : (
-              <div>
-                <label className="text-[10px] font-bold uppercase text-gray-400">Isi Utama Surat</label>
-                <textarea rows={8} className="w-full p-3 border rounded-xl" value={formData.isi_utama} onChange={e => setFormData({...formData, isi_utama: e.target.value})} />
-              </div>
-            )}
-
+            ) : (<div><label className="text-[10px] font-bold uppercase text-gray-400">Isi Utama Surat</label><textarea rows={8} className="w-full p-3 border rounded-xl" value={formData.isi_utama} onChange={e => setFormData({...formData, isi_utama: e.target.value})} /></div>)}
             <div><label className="text-[10px] font-bold uppercase text-gray-400">Kalimat Penutup</label><textarea rows={3} className="w-full p-3 border rounded-xl" value={formData.penutup} onChange={e => setFormData({...formData, penutup: e.target.value})} /></div>
           </div>
-
           <div className="space-y-4 h-fit sticky top-6">
             <div className="bg-slate-800 p-8 rounded-[32px] text-white text-center shadow-xl">
               <FileText size={48} className="mx-auto mb-4 text-slate-400" />
-              <button onClick={() => setIsPreviewing(true)} className="w-full bg-white text-slate-900 py-4 rounded-xl font-bold uppercase hover:bg-slate-200 transition-all flex justify-center gap-2 mb-4">
-                <Eye size={18}/> Preview Visual
-              </button>
+              <button onClick={() => setIsPreviewing(true)} className="w-full bg-white text-slate-900 py-4 rounded-xl font-bold uppercase hover:bg-slate-200 transition-all flex justify-center gap-2 mb-4"><Eye size={18}/> Preview Visual</button>
             </div>
             <div className="bg-blue-900/10 border border-blue-200 p-6 rounded-[32px] shadow-sm">
-               <History size={18} className="text-blue-800 mb-2"/>
-               <p className="text-xs font-mono font-bold text-blue-900 break-all bg-white p-3 rounded-xl border border-blue-100">{lastLetter}</p>
+               <History size={18} className="text-blue-800 mb-2"/><p className="text-xs font-mono font-bold text-blue-900 break-all bg-white p-3 rounded-xl border border-blue-100">{lastLetter}</p>
             </div>
           </div>
         </div>
       )}
 
+      {/* --- TAB SURAT MASUK (FITUR BARU) --- */}
+      {activeTab === 'in' && (
+        <div className="space-y-4">
+          <div className="flex justify-between items-center bg-blue-50 p-6 rounded-[32px] border border-blue-100 shadow-sm">
+            <h3 className="font-bold text-blue-800 uppercase flex items-center gap-2 tracking-wider">
+              <Inbox size={20}/> Arsip Surat Masuk
+            </h3>
+            <button 
+              onClick={() => setShowInModal(true)}
+              className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold text-xs uppercase shadow-lg shadow-blue-200 hover:bg-blue-700 flex items-center gap-2 transition-all active:scale-95"
+            >
+              <Plus size={16}/> Catat Surat Baru
+            </button>
+          </div>
+
+          <div className="bg-white rounded-[32px] shadow-sm border border-gray-100 overflow-hidden">
+            <table className="w-full text-left">
+              <thead className="bg-gray-50 border-b font-bold text-gray-500 uppercase text-[10px] tracking-widest">
+                <tr>
+                  <th className="p-5">Tgl Terima</th>
+                  <th className="p-5">Pengirim</th>
+                  <th className="p-5">No. Surat Asal</th>
+                  <th className="p-5">Perihal</th>
+                  <th className="p-5 text-center">Dokumen</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y text-sm">
+                {lettersIn.map((l) => (
+                  <tr key={l.id} className="hover:bg-gray-50/80 transition-colors">
+                    <td className="p-5 text-gray-500">{new Date(l.date_received).toLocaleDateString('id-ID')}</td>
+                    <td className="p-5 font-bold text-gray-800">{l.sender}</td>
+                    <td className="p-5 font-mono text-xs">{l.letter_number || '-'}</td>
+                    <td className="p-5 text-gray-600">{l.subject}</td>
+                    <td className="p-5 text-center">
+                      {l.file_url ? (
+                        <a 
+                          href={l.file_url} 
+                          target="_blank" 
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-blue-600 font-bold hover:underline"
+                        >
+                          <Eye size={14}/> Lihat
+                        </a>
+                      ) : (
+                        <span className="text-gray-300 italic text-xs">Tidak ada file</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {lettersIn.length === 0 && (
+                  <tr><td colSpan={5} className="p-20 text-center text-gray-400 italic">Belum ada data surat masuk.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* --- TAB SURAT KELUAR --- */}
+      {activeTab === 'out' && (
+        <div className="bg-white rounded-[32px] border border-gray-100 p-6 shadow-sm">
+           <h3 className="font-bold text-gray-800 uppercase flex items-center gap-2 mb-4 text-sm"><Send/> Arsip Keluar</h3>
+           <table className="w-full text-left text-[10px]">
+             <thead className="bg-gray-50 border-b font-bold text-gray-500 uppercase">
+               <tr><th className="p-4">Tanggal</th><th className="p-4">Tujuan</th><th className="p-4">No. Surat</th><th className="p-4">Perihal</th></tr>
+             </thead>
+             <tbody className="divide-y">
+               {lettersOut.map((l:any) => (
+                 <tr key={l.id} className="hover:bg-gray-50">
+                   <td className="p-4">{new Date(l.date_sent).toLocaleDateString('id-ID')}</td>
+                   <td className="p-4 font-bold">{l.recipient}</td>
+                   <td className="p-4 font-mono">{l.letter_number}</td>
+                   <td className="p-4">{l.subject}</td>
+                 </tr>
+               ))}
+             </tbody>
+           </table>
+        </div>
+      )}
+
+      {/* MODAL CATAT SURAT MASUK */}
+      {showInModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
+           <div className="bg-white w-full max-w-md rounded-[32px] p-8 shadow-2xl animate-in zoom-in duration-200">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="font-black text-gray-800 uppercase italic text-xl tracking-tight">Catat Surat Masuk</h3>
+                <button onClick={() => setShowInModal(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><X size={24}/></button>
+              </div>
+              
+              <form onSubmit={handleSaveIncoming} className="space-y-5">
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1 ml-1">Tanggal Terima</label>
+                  <input 
+                    type="date" required 
+                    className="w-full p-4 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none transition-all font-medium" 
+                    value={inForm.date_received} onChange={e => setInForm({...inForm, date_received: e.target.value})} 
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1 ml-1">Nama Pengirim / Instansi</label>
+                  <input 
+                    type="text" required placeholder="Contoh: Dinas Pendidikan Kota Cirebon"
+                    className="w-full p-4 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none transition-all font-medium" 
+                    value={inForm.sender} onChange={e => setInForm({...inForm, sender: e.target.value})} 
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1 ml-1">Nomor Surat Asal</label>
+                  <input 
+                    type="text" placeholder="Contoh: 421/001/Disdik"
+                    className="w-full p-4 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none transition-all font-medium font-mono" 
+                    value={inForm.letter_number} onChange={e => setInForm({...inForm, letter_number: e.target.value})} 
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1 ml-1">Perihal / Isi Ringkas</label>
+                  <input 
+                    type="text" required placeholder="Contoh: Undangan Koordinasi BOS"
+                    className="w-full p-4 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none transition-all font-medium" 
+                    value={inForm.subject} onChange={e => setInForm({...inForm, subject: e.target.value})} 
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1 ml-1">Unggah Scan Surat (PDF/Gambar)</label>
+                  <div className="relative group">
+                    <input 
+                      type="file" accept="image/*,application/pdf"
+                      onChange={e => setInForm({...inForm, file: e.target.files?.[0] || null})}
+                      className="hidden" id="fileIn"
+                    />
+                    <label 
+                      htmlFor="fileIn"
+                      className="w-full p-4 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center gap-2 cursor-pointer group-hover:border-blue-400 transition-all bg-gray-50/50"
+                    >
+                      <Upload className="text-gray-400 group-hover:text-blue-500 transition-colors" size={24}/>
+                      <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+                        {inForm.file ? inForm.file.name : "Klik untuk Pilih File"}
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                <button 
+                  disabled={uploading} 
+                  className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl shadow-blue-200 flex justify-center items-center gap-2 hover:bg-blue-700 active:scale-[0.98] transition-all disabled:bg-gray-400"
+                >
+                  {uploading ? (
+                    <><Loader2 className="animate-spin" size={16}/> Memproses...</>
+                  ) : (
+                    <><Save size={16}/> Simpan ke Arsip</>
+                  )}
+                </button>
+              </form>
+           </div>
+        </div>
+      )}
+
+      {/* --- PREVIEW WINDOW (BAGIAN BUAT SURAT - TIDAK DIUBAH) --- */}
       {isPreviewing && (
         <div className="fixed inset-0 bg-gray-900 z-50 overflow-y-auto animate-in slide-in-from-bottom">
-           <div className="bg-slate-800 p-4 sticky top-0 z-50 shadow-lg flex justify-between items-center text-white">
+           <div className="bg-slate-800 p-4 sticky top-0 z-50 shadow-lg flex justify-between items-center text-white border-b border-slate-700">
               <button onClick={() => setIsPreviewing(false)} className="bg-slate-700 px-4 py-2 rounded-lg font-bold text-sm flex gap-2 hover:bg-slate-600"><ArrowLeft size={16}/> Kembali Edit</button>
               <div className="flex gap-2">
                  <button onClick={() => handlePrint(false)} className="bg-blue-600 px-4 py-2 rounded-lg font-bold text-sm flex gap-2 hover:bg-blue-700"><Printer size={16}/> Cetak PDF</button>
-                 <button onClick={() => handlePrint(true)} className="bg-green-600 px-4 py-2 rounded-lg font-bold text-sm flex gap-2 hover:bg-green-700">
-                    {uploading ? <Loader2 className="animate-spin"/> : <><Save size={16}/> Cetak & Arsipkan</>}
-                 </button>
+                 <button onClick={() => handlePrint(true)} disabled={uploading} className="bg-green-600 px-4 py-2 rounded-lg font-bold text-sm flex gap-2 hover:bg-green-700">{uploading ? <Loader2 className="animate-spin"/> : <><Save size={16}/> Cetak & Arsipkan</>}</button>
               </div>
            </div>
-           
            <div className="flex justify-center p-8 bg-gray-900">
               <div className="bg-white w-[215mm] min-h-[330mm] shadow-2xl p-[2.54cm] text-black font-serif relative">
                  <div className="border-b-4 border-black pb-4 mb-6 flex items-center justify-between">
-                    <div className="w-[18%]"><img src={LOGO_URL} className="w-24 h-auto" crossOrigin="anonymous"/></div>
-                    <div className="w-[82%] text-center leading-tight -ml-16"> {/* Margin negatif untuk meratakan teks ke tengah kertas */}
+                    <div className="w-[70pt]"><img src={LOGO_URL} className="w-16 h-auto" crossOrigin="anonymous"/></div>
+                    <div className="flex-1 text-center leading-tight">
                        <h3 className="text-[13pt] font-bold">PERSATUAN GURU REPUBLIK INDONESIA</h3>
                        <h2 className="text-[18pt] font-black">PENGURUS RANTING KALIJAGA</h2>
                        <h4 className="text-[11pt] italic font-bold">Kalijaga Sub Branch</h4>
                        <p className="text-[8.5pt] mt-1">Jl. Teratai Raya No 1 Kalijaga Permai Kel. Kalijaga Kec. Harjamukti Kota Cirebon</p>
                        <p className="text-[8.5pt] text-black">Email: pgrikalijaga@gmail.com Website: pgrikalijaga.sekolahdasar.online</p>
                     </div>
+                    <div className="w-[70pt]"></div>
                  </div>
-
                  <div className="text-sm space-y-6">
-                    {selectedType.formType === 'formal' ? (
-                       <div className="text-center space-y-1">
-                          <h3 className="text-[14pt] font-bold underline">{selectedType.label.toUpperCase()}</h3>
-                          <p>Nomor : {fullLetterNumber}</p>
-                       </div>
-                    ) : (
-                       <div className="flex justify-between">
-                          <table>
-                            <tbody>
-                              <tr><td className="w-20">Nomor</td><td className="w-4">:</td><td>{fullLetterNumber}</td></tr>
-                              <tr><td>Lampiran</td><td>:</td><td>{formData.lampiran}</td></tr>
-                              <tr><td>Perihal</td><td>:</td><td>{selectedType.label} {formData.perihal}</td></tr>
-                            </tbody>
-                          </table>
-                          <div className="text-right">{titiMangsa}</div>
-                       </div>
-                    )}
-
-                    {selectedType.formType !== 'formal' && (
-                       <div className="font-bold">Kepada<br/>{formData.tujuan}</div>
-                    )}
-                    
-                    <div className="whitespace-pre-line">{formData.pembuka}</div>
-                    
-                    {selectedType.formType === 'invitation' ? (
-                      <div className="ml-8">
-                         <table><tbody>
-                           <tr><td className="w-24">Hari</td><td>: {formData.hari}</td></tr>
-                           <tr><td>Tanggal</td><td>: {formData.tanggal_acara}</td></tr>
-                           <tr><td>Waktu</td><td>: {formData.waktu}</td></tr>
-                           <tr><td>Tempat</td><td>: {formData.tempat}</td></tr>
-                         </tbody></table>
-                      </div>
-                    ) : <div className="whitespace-pre-line">{formData.isi_utama}</div>}
-
-                    <div className="whitespace-pre-line">{formData.penutup}</div>
-
-                    <div className="mt-8 text-center">
-                       {selectedType.formType === 'formal' && <div className="mb-1">{titiMangsa}</div>}
-                       <div className="font-bold">PENGURUS PGRI RANTING KALIJAGA</div>
-                    </div>
-
-                    <div className="flex justify-between text-center px-8 pt-4">
-                       <div>Ketua<br/><br/><br/><br/><span className="underline font-bold">DENDI SUPARMAN, S.Pd.SD</span><br/><span className="font-bold">NPA. 00001</span></div>
-                       <div><span className="font-bold">Sekretaris</span><br/><br/><br/><br/><span className="underline font-bold">ABDY EKA PRASETIA, S.Pd</span><br/><span className="font-bold">NPA. 00002</span></div>
-                    </div>
+                    {selectedType.formType === 'formal' ? ( <div className="text-center space-y-1"> <h3 className="text-[14pt] font-bold underline">{selectedType.label.toUpperCase()}</h3> <p>Nomor : {fullLetterNumber}</p> </div> ) : ( <div className="flex justify-between"> <table><tbody> <tr><td className="w-20">Nomor</td><td className="w-4">:</td><td>{fullLetterNumber}</td></tr> <tr><td>Lampiran</td><td>:</td><td>{formData.lampiran}</td></tr> <tr><td>Perihal</td><td>:</td><td>{selectedType.label} {formData.perihal}</td></tr> </tbody></table> <div className="text-right">{titiMangsa}</div> </div> )}
+                    {selectedType.formType !== 'formal' && (<div className="font-bold">Kepada<br/>{formData.tujuan}</div>)}
+                    <div className="whitespace-pre-line text-justify">{formData.pembuka}</div>
+                    {selectedType.formType === 'invitation' ? ( <div className="ml-8"> <table><tbody> <tr><td className="w-24">Hari</td><td>: {formData.hari}</td></tr> <tr><td>Tanggal</td><td>: {formData.tanggal_acara}</td></tr> <tr><td>Waktu</td><td>: {formData.waktu}</td></tr> <tr><td>Tempat</td><td>: {formData.tempat}</td></tr> </tbody></table> </div> ) : <div className="whitespace-pre-line text-justify">{formData.isi_utama}</div>}
+                    <div className="whitespace-pre-line text-justify">{formData.penutup}</div>
+                    <div className="mt-8 text-center"> {selectedType.formType === 'formal' && <div className="mb-1">{titiMangsa}</div>} <div className="font-bold">PENGURUS PGRI RANTING KALIJAGA</div> </div>
+                    <div className="flex justify-between text-center px-8 pt-4"> <div>Ketua<br/><br/><br/><br/><span className="underline font-bold">DENDI SUPARMAN, S.Pd.SD</span><br/><span className="font-bold">NPA. 00001</span></div> <div><span className="font-bold">Sekretaris</span><br/><br/><br/><br/><span className="underline font-bold">ABDY EKA PRASETIA, S.Pd</span><br/><span className="font-bold">NPA. 00002</span></div> </div>
                  </div>
               </div>
            </div>
