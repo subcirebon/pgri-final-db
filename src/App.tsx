@@ -1,24 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './Layout';
-import Dashboard from './Dashboard';
-import Login from './Login'; // Import Login baru kamu
-import Members from './Members';
-import Finance from './Finance';
-import Letters from './Letters';
-import Donations from './Donations';
-import News from './Info';
-import Advocacy from './Advocacy';
-import Counseling from './Counseling';
-import About from './Profile';
+import Login from './Login';
+// Halaman yang SUDAH PASTI ADA
+import Info from './Info';
+import Profile from './Profile';
+
+// --- KOMPONEN SEMENTARA (Agar tidak blank) ---
+// Kita pakai ini dulu sampai bapak siap membuat file aslinya satu per satu
+const Dashboard = () => <div className="p-8"><h1 className="text-2xl font-bold">Dashboard</h1><p>Halaman ini belum dibuat.</p></div>;
+const Members = () => <div className="p-8"><h1 className="text-2xl font-bold">Data Anggota</h1><p>Halaman ini belum dibuat.</p></div>;
+const Finance = () => <div className="p-8"><h1 className="text-2xl font-bold">Keuangan</h1><p>Halaman ini belum dibuat.</p></div>;
+const Letters = () => <div className="p-8"><h1 className="text-2xl font-bold">Surat Menyurat</h1><p>Halaman ini belum dibuat.</p></div>;
+const Donations = () => <div className="p-8"><h1 className="text-2xl font-bold">Dana Sosial</h1><p>Halaman ini belum dibuat.</p></div>;
+const Advocacy = () => <div className="p-8"><h1 className="text-2xl font-bold">Advokasi</h1><p>Halaman ini belum dibuat.</p></div>;
+const Counseling = () => <div className="p-8"><h1 className="text-2xl font-bold">Konseling</h1><p>Halaman ini belum dibuat.</p></div>;
 
 function App() {
-  // STATE LOGIN
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [userRole, setUserRole] = useState('user'); // Default 'user'
-  const [userName, setUserName] = useState('');     // Menyimpan Nama Asli
+  const [userRole, setUserRole] = useState('user');
+  const [userName, setUserName] = useState('');
 
-  // Cek Session saat Refresh (Agar tidak logout sendiri)
   useEffect(() => {
     const storedAuth = localStorage.getItem('pgri_auth');
     const storedRole = localStorage.getItem('pgri_role');
@@ -31,19 +33,15 @@ function App() {
     }
   }, []);
 
-  // FUNGSI LOGIN (Dipanggil oleh Login.tsx)
   const handleLogin = (role: string, name: string) => {
     setIsAuthenticated(true);
     setUserRole(role);
     setUserName(name);
-
-    // Simpan ke Browser
     localStorage.setItem('pgri_auth', 'true');
     localStorage.setItem('pgri_role', role);
     localStorage.setItem('pgri_name', name);
   };
 
-  // FUNGSI LOGOUT
   const handleLogout = () => {
     setIsAuthenticated(false);
     setUserRole('user');
@@ -53,32 +51,14 @@ function App() {
 
   return (
     <Routes>
-      {/* Route Login */}
       <Route 
         path="/login" 
-        element={
-          !isAuthenticated ? (
-            <Login onLogin={handleLogin} />
-          ) : (
-            <Navigate to="/" replace />
-          )
-        } 
+        element={!isAuthenticated ? <Login onLogin={handleLogin} /> : <Navigate to="/" replace />} 
       />
 
-      {/* Route Utama (Protected) */}
       <Route 
         path="/" 
-        element={
-          isAuthenticated ? (
-            <Layout 
-              onLogout={handleLogout} 
-              userRole={userRole} 
-              userName={userName} // Kirim Nama ke Layout
-            /> 
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
+        element={isAuthenticated ? <Layout onLogout={handleLogout} userRole={userRole} userName={userName} /> : <Navigate to="/login" replace />}
       >
         <Route index element={<Dashboard />} />
         <Route path="members" element={<Members />} />
