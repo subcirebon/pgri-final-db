@@ -4,40 +4,49 @@ import {
   LayoutDashboard, Users, Wallet, Mail, Shield, Info, LogOut, Menu, X, 
   HeartHandshake, Building2, Crown, UserCog, User, Heart, Camera, ChevronDown, Loader2 
 } from 'lucide-react';
-import { supabase } from './supabaseClient'; // 1. WAJIB IMPORT SUPABASE
+import { supabase } from './supabaseClient'; 
 
 const Layout = ({ onLogout, userRole }: { onLogout: () => void, userRole: string }) => {
   // --- STATE ---
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   
-  // State Data User dari Database
+  // State Data User
   const [userData, setUserData] = useState({
     name: 'Memuat...',
-    role: 'PGRI Ranting Kalijaga',
+    role: 'Anggota PGRI', // Default text
     avatar_url: '' as string | null
   });
   
-  const [uploading, setUploading] = useState(false); // Loading saat upload
+  const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ID User Hardcode (Nanti diganti sistem Login)
+  // ID User Hardcode (User ID = 1)
   const MEMBER_ID = 1; 
 
-  // --- 1. LOAD DATA DARI SUPABASE (Bukan LocalStorage) ---
+  // --- 1. LOAD DATA DARI SUPABASE (Perbaikan Query) ---
   useEffect(() => {
     const fetchUserProfile = async () => {
       try {
+        // PERBAIKAN DI SINI:
+        // Kita meminta 'name', 'teacher_type', dan 'avatar_url' (sesuai kolom databasemu)
+        // Kita TIDAK meminta 'role' karena kolom itu tidak ada.
         const { data, error } = await supabase
           .from('members')
-          .select('name, role, avatar_url')
+          .select('name, teacher_type, avatar_url')
           .eq('id', MEMBER_ID)
           .single();
 
+        if (error) {
+          console.error("Error ambil data:", error.message);
+          return;
+        }
+
         if (data) {
           setUserData({
-            name: data.name || 'Anggota',
-            role: data.role || 'PGRI Ranting Kalijaga',
+            name: data.name || 'Tanpa Nama',
+            // Kita pakai teacher_type sebagai jabatan, atau default text
+            role: data.teacher_type || 'PGRI Ranting Kalijaga',
             avatar_url: data.avatar_url || null
           });
         }
@@ -59,12 +68,13 @@ const Layout = ({ onLogout, userRole }: { onLogout: () => void, userRole: string
       setUploading(true);
       const file = e.target.files[0];
       const fileExt = file.name.split('.').pop();
+      // Gunakan timestamp agar nama file unik
       const fileName = `${MEMBER_ID}-${Date.now()}.${fileExt}`;
       const filePath = `${fileName}`;
 
-      // A. Upload File Fisik ke Storage
+      // A. Upload File
       const { error: uploadError } = await supabase.storage
-        .from('avatars') // Pastikan nama bucket 'avatars'
+        .from('avatars')
         .upload(filePath, file);
 
       if (uploadError) throw uploadError;
@@ -76,7 +86,7 @@ const Layout = ({ onLogout, userRole }: { onLogout: () => void, userRole: string
       
       const publicUrl = urlData.publicUrl;
 
-      // C. Simpan Link ke Database (Tabel Members)
+      // C. Simpan Link ke Database
       const { error: updateError } = await supabase
         .from('members')
         .update({ avatar_url: publicUrl })
@@ -84,10 +94,10 @@ const Layout = ({ onLogout, userRole }: { onLogout: () => void, userRole: string
 
       if (updateError) throw updateError;
 
-      // D. Update Tampilan di Layar (Tanpa Reload)
+      // D. Update Tampilan Langsung
       setUserData(prev => ({ ...prev, avatar_url: publicUrl }));
       alert('Foto profil berhasil diperbarui!');
-      setIsProfileOpen(false); // Tutup menu
+      setIsProfileOpen(false);
 
     } catch (error: any) {
       alert('Gagal upload: ' + error.message);
@@ -159,23 +169,21 @@ const Layout = ({ onLogout, userRole }: { onLogout: () => void, userRole: string
              <h2 className="font-bold text-gray-700 text-sm md:text-lg">Selamat Datang, <span className="text-red-700 uppercase">Bapak & Ibu Guru Hebat!</span></h2>
           </div>
 
-          {/* --- AREA PROFIL (INTERAKTIF SUPABASE) --- */}
+          {/* --- AREA PROFIL --- */}
           <div className="relative">
             <button 
               onClick={() => setIsProfileOpen(!isProfileOpen)}
               className="flex items-center gap-3 p-1 pr-2 rounded-xl hover:bg-gray-50 transition-colors focus:outline-none border border-transparent hover:border-gray-100"
             >
-              {/* Data Nama dari Database */}
               <div className="text-right hidden sm:block">
                 <p className="text-sm font-bold text-gray-800 flex items-center justify-end gap-1">
                   {userRole === 'super_admin' && <Crown size={14} className="text-yellow-500" />}
                   {userRole === 'admin' && <UserCog size={14} className="text-blue-500" />}
-                  {userData.name} {/* Nama Dinamis */}
+                  {userData.name} {/* Nama dari Database */}
                 </p>
                 <p className="text-xs text-gray-500 italic">{userData.role}</p>
               </div>
 
-              {/* Lingkaran Foto Profil */}
               <div className={`h-10 w-10 rounded-full flex items-center justify-center font-bold border-2 text-white shadow-sm overflow-hidden relative
                 ${userRole === 'super_admin' ? 'bg-yellow-500 border-yellow-200' : 'bg-gray-500 border-gray-200'}
               `}>
@@ -189,19 +197,16 @@ const Layout = ({ onLogout, userRole }: { onLogout: () => void, userRole: string
               <ChevronDown size={16} className={`text-gray-400 transition-transform duration-200 ${isProfileOpen ? 'rotate-180' : ''}`} />
             </button>
 
-            {/* --- DROPDOWN MENU --- */}
+            {/* --- DROPDOWN --- */}
             {isProfileOpen && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setIsProfileOpen(false)}></div>
-                
                 <div className="absolute right-0 mt-2 w-60 bg-white rounded-xl shadow-xl border border-gray-100 z-20 overflow-hidden animate-in fade-in zoom-in duration-200 origin-top-right">
                   <div className="p-4 border-b border-gray-100 text-center bg-gray-50 sm:hidden">
                     <p className="font-bold text-gray-800">{userData.name}</p>
                     <p className="text-xs text-gray-500">{userData.role}</p>
                   </div>
-                  
                   <div className="p-2 space-y-1">
-                    {/* Menu Ubah Foto (Terhubung ke Supabase) */}
                     <button 
                       onClick={triggerFileInput} 
                       disabled={uploading}
@@ -211,9 +216,7 @@ const Layout = ({ onLogout, userRole }: { onLogout: () => void, userRole: string
                       {uploading ? 'Sedang Mengupload...' : 'Ubah Foto Profil'}
                     </button>
                     <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
-
                     <div className="border-t border-gray-100 my-1"></div>
-
                     <button 
                       onClick={onLogout} 
                       className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-3 transition-colors font-bold"
@@ -235,7 +238,6 @@ const Layout = ({ onLogout, userRole }: { onLogout: () => void, userRole: string
   );
 };
 
-// Komponen NavItem tetap sama
 const NavItem = ({ to, icon, label, onClick }: { to: string; icon: React.ReactNode; label: string, onClick?: () => void }) => (
   <NavLink 
     to={to} 
