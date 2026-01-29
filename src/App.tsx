@@ -1,44 +1,44 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './Layout';
 import Login from './Login';
 
-// --- IMPORT SEMUA FILE ASLI (FULL MODULES) ---
+// --- IMPORT SEMUA FILE ASLI ---
 import Dashboard from './Dashboard'; 
 import Members from './Members';     
-import Letters from './Letters';     // Mengaktifkan Surat Menyurat
-import Finance from './Finance';     // Mengaktifkan Keuangan
-import Donations from './Donations'; // Mengaktifkan Dana Sosial
-import Advocacy from './Advocacy';   // Mengaktifkan Advokasi
-import Counseling from './Counseling'; // Mengaktifkan Konseling
-import Info from './Info';           // Mengaktifkan Info & Berita
+import Letters from './Letters';    
+import Finance from './Finance'; 
+import Donations from './Donations';
+import Advocacy from './Advocacy';
+import Counseling from './Counseling';
+import Info from './Info';
 import Profile from './Profile';
 
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [userRole, setUserRole] = useState('user');
-  const [userName, setUserName] = useState('');
+  // --- STATE DENGAN LAZY INIT (Agar Tahan Refresh) ---
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    return localStorage.getItem('pgri_auth') === 'true';
+  });
 
-  useEffect(() => {
-    // Cek sesi login saat aplikasi dibuka
-    const storedAuth = localStorage.getItem('pgri_auth');
-    const storedRole = localStorage.getItem('pgri_role');
-    const storedName = localStorage.getItem('pgri_name');
+  const [userRole, setUserRole] = useState(() => {
+    return localStorage.getItem('pgri_role') || 'user';
+  });
 
-    if (storedAuth === 'true') {
-      setIsAuthenticated(true);
-      setUserRole(storedRole || 'user');
-      setUserName(storedName || 'Anggota');
-    }
-  }, []);
+  const [userName, setUserName] = useState(() => {
+    return localStorage.getItem('pgri_name') || 'Anggota';
+  });
 
-  const handleLogin = (role: string, name: string) => {
+  // --- PERBAIKAN DI SINI: MENERIMA ID USER ---
+  const handleLogin = (role: string, name: string, id: string) => {
     setIsAuthenticated(true);
     setUserRole(role);
     setUserName(name);
+    
+    // Simpan data penting ke browser
     localStorage.setItem('pgri_auth', 'true');
     localStorage.setItem('pgri_role', role);
     localStorage.setItem('pgri_name', name);
+    localStorage.setItem('pgri_user_id', id.toString()); // <--- INI KUNCINYA (Simpan ID)
   };
 
   const handleLogout = () => {
@@ -50,18 +50,15 @@ function App() {
 
   return (
     <Routes>
-      {/* Halaman Login */}
       <Route 
         path="/login" 
         element={!isAuthenticated ? <Login onLogin={handleLogin} /> : <Navigate to="/" replace />} 
       />
 
-      {/* Halaman Utama (Protected Routes) */}
       <Route 
         path="/" 
         element={isAuthenticated ? <Layout onLogout={handleLogout} userRole={userRole} userName={userName} /> : <Navigate to="/login" replace />}
       >
-        {/* SEMUA ROUTE KINI MENGARAH KE FILE ASLI */}
         <Route index element={<Dashboard />} />
         <Route path="members" element={<Members />} />
         <Route path="letters" element={<Letters />} />
