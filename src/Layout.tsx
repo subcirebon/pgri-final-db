@@ -2,52 +2,54 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
 import { 
   LayoutDashboard, Users, Wallet, Mail, Shield, Info, LogOut, Menu, X, 
-  HeartHandshake, Building2, Crown, UserCog, User, Heart, Camera, ChevronDown, Loader2 
+  HeartHandshake, Building2, Crown, User, Camera, ChevronDown, Loader2, RefreshCw
 } from 'lucide-react';
 import { supabase } from './supabaseClient'; 
 
-const Layout = ({ onLogout, userRole }: { onLogout: () => void, userRole: string }) => {
+const Layout = ({ onLogout }: { onLogout: () => void }) => {
   // --- STATE ---
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   
-  // State Data User
+  // STATE DINAMIS: Mengambil ID dari penyimpanan browser, default ke 1
+  const [activeId, setActiveId] = useState<number>(() => {
+    const saved = localStorage.getItem('pgri_active_id');
+    return saved ? parseInt(saved) : 1;
+  });
+
   const [userData, setUserData] = useState({
     name: 'Memuat...',
-    role: 'Anggota PGRI', // Default text
+    jabatan: 'Anggota PGRI',
     avatar_url: '' as string | null
   });
   
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ID User Hardcode (User ID = 1)
-  const MEMBER_ID = 1; 
-
-  // --- 1. LOAD DATA DARI SUPABASE (Perbaikan Query) ---
+  // --- 1. LOAD DATA BERDASARKAN ACTIVE ID ---
   useEffect(() => {
     const fetchUserProfile = async () => {
       try {
-        // PERBAIKAN DI SINI:
-        // Kita meminta 'name', 'teacher_type', dan 'avatar_url' (sesuai kolom databasemu)
-        // Kita TIDAK meminta 'role' karena kolom itu tidak ada.
+        setUserData(prev => ({ ...prev, name: 'Memuat...' })); // Efek loading
+        
         const { data, error } = await supabase
           .from('members')
           .select('name, teacher_type, avatar_url')
-          .eq('id', MEMBER_ID)
+          .eq('id', activeId) // <--- PENTING: ID sekarang dinamis!
           .single();
-
-        if (error) {
-          console.error("Error ambil data:", error.message);
-          return;
-        }
 
         if (data) {
           setUserData({
-            name: data.name || 'Tanpa Nama',
-            // Kita pakai teacher_type sebagai jabatan, atau default text
-            role: data.teacher_type || 'PGRI Ranting Kalijaga',
+            name: data.name || `User ID ${activeId}`,
+            jabatan: data.teacher_type || 'Anggota PGRI',
             avatar_url: data.avatar_url || null
+          });
+        } else {
+          // Jika ID tidak ditemukan di database
+          setUserData({
+            name: 'User Tidak Ditemukan',
+            jabatan: '-',
+            avatar_url: null
           });
         }
       } catch (error) {
@@ -56,11 +58,22 @@ const Layout = ({ onLogout, userRole }: { onLogout: () => void, userRole: string
     };
 
     fetchUserProfile();
-  }, []);
+  }, [activeId]); // Dijalankan ulang setiap kali activeId berubah
+
+  // --- 2. FUNGSI GANTI ID (FITUR DEV) ---
+  const switchUser = (newId: string) => {
+    const id = parseInt(newId);
+    if (!isNaN(id) && id > 0) {
+      localStorage.setItem('pgri_active_id', id.toString());
+      setActiveId(id);
+      setIsProfileOpen(false);
+      // alert(`Berhasil pindah ke User ID: ${id}`);
+    }
+  };
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
-  // --- 2. FUNGSI UPLOAD KE SUPABASE STORAGE ---
+  // --- 3. FUNGSI UPLOAD FOTO (SESUAI ID AKTIF) ---
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
 
@@ -68,11 +81,11 @@ const Layout = ({ onLogout, userRole }: { onLogout: () => void, userRole: string
       setUploading(true);
       const file = e.target.files[0];
       const fileExt = file.name.split('.').pop();
-      // Gunakan timestamp agar nama file unik
-      const fileName = `${MEMBER_ID}-${Date.now()}.${fileExt}`;
+      // Nama file unik per user
+      const fileName = `${activeId}-${Date.now()}.${fileExt}`;
       const filePath = `${fileName}`;
 
-      // A. Upload File
+      // A. Upload ke Storage
       const { error: uploadError } = await supabase.storage
         .from('avatars')
         .upload(filePath, file);
@@ -86,17 +99,17 @@ const Layout = ({ onLogout, userRole }: { onLogout: () => void, userRole: string
       
       const publicUrl = urlData.publicUrl;
 
-      // C. Simpan Link ke Database
+      // C. Simpan ke Database (Sesuai ID Aktif)
       const { error: updateError } = await supabase
         .from('members')
         .update({ avatar_url: publicUrl })
-        .eq('id', MEMBER_ID);
+        .eq('id', activeId);
 
       if (updateError) throw updateError;
 
-      // D. Update Tampilan Langsung
+      // D. Update Tampilan
       setUserData(prev => ({ ...prev, avatar_url: publicUrl }));
-      alert('Foto profil berhasil diperbarui!');
+      alert(`Foto untuk User ID ${activeId} berhasil diperbarui!`);
       setIsProfileOpen(false);
 
     } catch (error: any) {
@@ -108,12 +121,6 @@ const Layout = ({ onLogout, userRole }: { onLogout: () => void, userRole: string
 
   const triggerFileInput = () => {
     fileInputRef.current?.click();
-  };
-
-  const getRoleLabel = () => {
-    if (userRole === 'super_admin') return 'Super Admin';
-    if (userRole === 'admin') return 'Administrator';
-    return 'Anggota';
   };
 
   return (
@@ -147,7 +154,7 @@ const Layout = ({ onLogout, userRole }: { onLogout: () => void, userRole: string
           <NavItem to="/info" icon={<Info size={20} />} label="Info dan Berita" onClick={() => setIsSidebarOpen(false)} />
           <NavItem to="/members" icon={<Users size={20} />} label="Data Anggota" onClick={() => setIsSidebarOpen(false)} />
           <NavItem to="/finance" icon={<Wallet size={20} />} label="Keuangan" onClick={() => setIsSidebarOpen(false)} />
-          <NavItem to="/donations" icon={<Heart size={20} />} label="Dana Sosial" onClick={() => setIsSidebarOpen(false)} />
+          <NavItem to="/donations" icon={<HeartHandshake size={20} />} label="Dana Sosial" onClick={() => setIsSidebarOpen(false)} />
           <NavItem to="/letters" icon={<Mail size={20} />} label="Surat Menyurat" onClick={() => setIsSidebarOpen(false)} />
           <NavItem to="/advocacy" icon={<Shield size={20} />} label="Advokasi Hukum" onClick={() => setIsSidebarOpen(false)} />
           <NavItem to="/counseling" icon={<HeartHandshake size={20} />} label="Konseling" onClick={() => setIsSidebarOpen(false)} />
@@ -177,16 +184,13 @@ const Layout = ({ onLogout, userRole }: { onLogout: () => void, userRole: string
             >
               <div className="text-right hidden sm:block">
                 <p className="text-sm font-bold text-gray-800 flex items-center justify-end gap-1">
-                  {userRole === 'super_admin' && <Crown size={14} className="text-yellow-500" />}
-                  {userRole === 'admin' && <UserCog size={14} className="text-blue-500" />}
-                  {userData.name} {/* Nama dari Database */}
+                  <Crown size={14} className="text-yellow-500" />
+                  {userData.name}
                 </p>
-                <p className="text-xs text-gray-500 italic">{userData.role}</p>
+                <p className="text-xs text-gray-500 italic">{userData.jabatan}</p>
               </div>
 
-              <div className={`h-10 w-10 rounded-full flex items-center justify-center font-bold border-2 text-white shadow-sm overflow-hidden relative
-                ${userRole === 'super_admin' ? 'bg-yellow-500 border-yellow-200' : 'bg-gray-500 border-gray-200'}
-              `}>
+              <div className="h-10 w-10 rounded-full flex items-center justify-center font-bold bg-gray-500 border-2 border-gray-200 text-white shadow-sm overflow-hidden relative">
                 {userData.avatar_url ? (
                   <img src={userData.avatar_url} alt="Profil" className="w-full h-full object-cover" />
                 ) : (
@@ -201,12 +205,36 @@ const Layout = ({ onLogout, userRole }: { onLogout: () => void, userRole: string
             {isProfileOpen && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setIsProfileOpen(false)}></div>
-                <div className="absolute right-0 mt-2 w-60 bg-white rounded-xl shadow-xl border border-gray-100 z-20 overflow-hidden animate-in fade-in zoom-in duration-200 origin-top-right">
+                <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-gray-100 z-20 overflow-hidden animate-in fade-in zoom-in duration-200 origin-top-right">
                   <div className="p-4 border-b border-gray-100 text-center bg-gray-50 sm:hidden">
                     <p className="font-bold text-gray-800">{userData.name}</p>
-                    <p className="text-xs text-gray-500">{userData.role}</p>
+                    <p className="text-xs text-gray-500">{userData.jabatan}</p>
                   </div>
+                  
                   <div className="p-2 space-y-1">
+                    {/* FITUR DEV: GANTI USER ID */}
+                    <div className="px-4 py-2 bg-yellow-50 border border-yellow-100 rounded-lg mb-2">
+                      <p className="text-[10px] font-bold text-yellow-700 uppercase tracking-wider mb-1">Mode Developer</p>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-600">ID:</span>
+                        <input 
+                          type="number" 
+                          defaultValue={activeId}
+                          className="w-12 text-xs border border-gray-300 rounded px-1 py-0.5"
+                          onBlur={(e) => switchUser(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') switchUser((e.target as HTMLInputElement).value);
+                          }}
+                        />
+                        <button onClick={() => window.location.reload()} className="p-1 hover:bg-yellow-200 rounded text-yellow-700" title="Refresh">
+                          <RefreshCw size={12}/>
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-gray-400 mt-1 italic leading-tight">Ganti angka & Enter untuk pindah akun.</p>
+                    </div>
+
+                    <div className="border-t border-gray-100 my-1"></div>
+
                     <button 
                       onClick={triggerFileInput} 
                       disabled={uploading}
@@ -216,7 +244,7 @@ const Layout = ({ onLogout, userRole }: { onLogout: () => void, userRole: string
                       {uploading ? 'Sedang Mengupload...' : 'Ubah Foto Profil'}
                     </button>
                     <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
-                    <div className="border-t border-gray-100 my-1"></div>
+                    
                     <button 
                       onClick={onLogout} 
                       className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-3 transition-colors font-bold"
@@ -231,7 +259,8 @@ const Layout = ({ onLogout, userRole }: { onLogout: () => void, userRole: string
         </header>
 
         <div className="p-4 md:p-8">
-          <Outlet context={{ userRole }} />
+          {/* Kirim role "admin" sebagai default untuk testing */}
+          <Outlet context={{ userRole: 'admin' }} />
         </div>
       </main>
     </div>
