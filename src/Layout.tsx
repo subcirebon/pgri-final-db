@@ -1,190 +1,182 @@
-import React, { useState, useEffect, useRef } from 'react'; 
-import { Outlet, NavLink } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
-  LayoutDashboard, Users, Wallet, Mail, Shield, Info, LogOut, Menu, X, 
-  HeartHandshake, Building2, Crown, UserCog, User, Heart, Camera, ChevronDown 
+  LayoutDashboard, 
+  Users, 
+  FileText, 
+  Wallet, 
+  Heart, 
+  Scale, 
+  MessageCircle, 
+  Info, 
+  Menu, 
+  X, 
+  LogOut,
+  User
 } from 'lucide-react';
+import { supabase } from './supabaseClient'; // Pastikan import ini ada
 
-const Layout = ({ onLogout, userRole }: { onLogout: () => void, userRole: string }) => {
-  // --- STATE ---
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isProfileOpen, setIsProfileOpen] = useState(false); // Untuk menu dropdown profil
-  const [profileImage, setProfileImage] = useState<string | null>(null); // Untuk foto profil
-  const fileInputRef = useRef<HTMLInputElement>(null); // Referensi ke input file
+const Layout = () => {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const location = useLocation();
+  const navigate = useNavigate();
+  
+  // STATE FOTO PROFIL & NAMA
+  const [userProfile, setUserProfile] = useState({
+    name: 'Anggota',
+    role: 'PGRI Ranting Kalijaga',
+    avatar_url: ''
+  });
 
-  // 1. LOAD FOTO PROFIL (Jika ada tersimpan)
+  // FUNGSI AMBIL DATA USER (Supaya Foto Permanen)
   useEffect(() => {
-    const savedImage = localStorage.getItem('pgri_profile_image');
-    if (savedImage) setProfileImage(savedImage);
-  }, []);
+    const fetchUserProfile = async () => {
+      // Ganti ID 1 dengan ID user login nanti
+      const { data, error } = await supabase
+        .from('members')
+        .select('name, role, avatar_url')
+        .eq('id', 1) 
+        .single();
 
-  const getRoleLabel = () => {
-    if (userRole === 'super_admin') return 'Super Admin';
-    if (userRole === 'admin') return 'Administrator';
-    return 'Anggota';
-  };
+      if (data) {
+        setUserProfile({
+          name: data.name || 'Anggota',
+          role: data.role || 'PGRI Ranting Kalijaga',
+          avatar_url: data.avatar_url || '' // Ambil URL dari database
+        });
+      }
+    };
 
-  const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
+    fetchUserProfile();
+  }, []); // Dijalankan sekali saat aplikasi dibuka
 
-  // 2. FUNGSI GANTI FOTO
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      const imageUrl = URL.createObjectURL(file);
-      setProfileImage(imageUrl);
-      localStorage.setItem('pgri_profile_image', imageUrl); // Simpan ke browser
-      setIsProfileOpen(false); // Tutup menu
+  const menuItems = [
+    { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
+    { icon: Info, label: 'Info dan Berita', path: '/news' },
+    { icon: Users, label: 'Data Anggota', path: '/members' },
+    { icon: Wallet, label: 'Keuangan', path: '/finance' },
+    { icon: Heart, label: 'Dana Sosial', path: '/donations' },
+    { icon: FileText, label: 'Surat Menyurat', path: '/letters' },
+    { icon: Scale, label: 'Advokasi Hukum', path: '/advocacy' },
+    { icon: MessageCircle, label: 'Konseling', path: '/counseling' },
+    { icon: Info, label: 'Tentang Kami', path: '/about' },
+  ];
+
+  const handleLogout = () => {
+    const confirm = window.confirm('Apakah anda yakin ingin keluar?');
+    if (confirm) {
+      navigate('/login');
     }
   };
 
-  const triggerFileInput = () => {
-    fileInputRef.current?.click();
-  };
-
   return (
-    <div className="flex min-h-screen bg-gray-50 font-sans relative">
-      {/* OVERLAY MOBILE */}
-      {isSidebarOpen && (
+    <div className="flex h-screen bg-gray-50 font-sans text-gray-800">
+      
+      {/* SIDEBAR MOBILE OVERLAY */}
+      {sidebarOpen && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-50 z-20 md:hidden" 
-          onClick={toggleSidebar}
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
         />
       )}
 
       {/* SIDEBAR */}
-      <aside className={`w-64 bg-red-800 text-white fixed h-full shadow-xl z-30 transition-transform duration-300 ease-in-out 
-        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 flex flex-col`}>
-        
-        <div className="p-6 border-b border-red-700 flex flex-col items-center text-center">
-          <button onClick={toggleSidebar} className="md:hidden absolute right-4 top-4 text-red-200">
-            <X size={24} />
-          </button>
-          
-          <div className="bg-white p-2 rounded-full mb-3 shadow-lg">
-            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2a/Persatuan_Guru_Republik_Indonesia.png/500px-Persatuan_Guru_Republik_Indonesia.png" alt="Logo" className="w-12 h-12 object-contain"/>
+      <aside className={`
+        fixed lg:static inset-y-0 left-0 z-50 w-64 bg-[#991b1b] text-white transform transition-transform duration-200 ease-in-out shadow-xl
+        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+      `}>
+        <div className="p-6 text-center border-b border-white/10">
+          <div className="w-16 h-16 mx-auto bg-white rounded-full flex items-center justify-center mb-3 shadow-lg overflow-hidden">
+             {/* LOGO PGRI */}
+             <img src="/logo-pgri.png" alt="PGRI" className="w-12 h-12 object-contain" />
           </div>
-          <h2 className="text-xl font-bold tracking-wide text-white leading-tight">PGRI RANTING KALIJAGA</h2>
-          <p className="text-[10px] text-red-200 mt-1 uppercase tracking-widest">Sistem Administrasi</p>
+          <h1 className="text-xl font-bold tracking-tight">PGRI RANTING KALIJAGA</h1>
+          <p className="text-xs text-red-100 mt-1 opacity-80 uppercase tracking-widest">Sistem Administrasi</p>
         </div>
-        
-        {/* MENU NAVIGASI */}
-        <nav className="p-4 space-y-2 overflow-y-auto flex-1">
-          <NavItem to="/" icon={<LayoutDashboard size={20} />} label="Dashboard" onClick={() => setIsSidebarOpen(false)} />
-          <NavItem to="/info" icon={<Info size={20} />} label="Info dan Berita" onClick={() => setIsSidebarOpen(false)} />
-          <NavItem to="/members" icon={<Users size={20} />} label="Data Anggota" onClick={() => setIsSidebarOpen(false)} />
-          <NavItem to="/finance" icon={<Wallet size={20} />} label="Keuangan" onClick={() => setIsSidebarOpen(false)} />
-          <NavItem to="/donations" icon={<Heart size={20} />} label="Dana Sosial" onClick={() => setIsSidebarOpen(false)} />
-          <NavItem to="/letters" icon={<Mail size={20} />} label="Surat Menyurat" onClick={() => setIsSidebarOpen(false)} />
-          <NavItem to="/advocacy" icon={<Shield size={20} />} label="Advokasi Hukum" onClick={() => setIsSidebarOpen(false)} />
-          <NavItem to="/counseling" icon={<HeartHandshake size={20} />} label="Konseling" onClick={() => setIsSidebarOpen(false)} />
-          <NavItem to="/profile" icon={<Building2 size={20} />} label="Tentang Kami" onClick={() => setIsSidebarOpen(false)} />
-        </nav>
 
-        {/* FOOTER SIDEBAR (Hanya Copyright, Tombol Keluar DIHAPUS dari sini) */}
-        <div className="p-4 bg-red-900 border-t border-red-800 text-center text-xs text-red-300/50">
+        <nav className="p-4 space-y-1 overflow-y-auto max-h-[calc(100vh-180px)]">
+          {menuItems.map((item) => {
+            const isActive = location.pathname === item.path;
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                onClick={() => setSidebarOpen(false)}
+                className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 group ${
+                  isActive 
+                    ? 'bg-white/10 text-white font-bold shadow-sm border-l-4 border-yellow-400' 
+                    : 'text-red-100 hover:bg-white/5 hover:text-white'
+                }`}
+              >
+                <item.icon size={20} className={isActive ? 'text-yellow-400' : 'text-red-300 group-hover:text-white'} />
+                <span className="text-sm">{item.label}</span>
+              </Link>
+            );
+          })}
+          
+          <button 
+            onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-red-200 hover:bg-red-900/50 hover:text-white transition-colors mt-8"
+          >
+            <LogOut size={20} />
+            <span className="text-sm">Keluar</span>
+          </button>
+        </nav>
+        
+        <div className="absolute bottom-0 w-full p-4 text-center text-xs text-red-300/60 border-t border-white/5">
           &copy; 2026 PGRI Ranting Kalijaga
         </div>
       </aside>
 
-      {/* KONTEN UTAMA */}
-      <main className="flex-1 md:ml-64 transition-all duration-300">
-        <header className="bg-white p-4 shadow-sm border-b border-gray-200 flex justify-between items-center sticky top-0 z-10">
-          <div className="flex items-center gap-3">
-             <button onClick={toggleSidebar} className="md:hidden p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
-                <Menu size={24} />
-             </button>
-             <h2 className="font-bold text-gray-700 text-sm md:text-lg">Selamat Datang, <span className="text-red-700 uppercase">Bapak & Ibu Guru Hebat!</span></h2>
+      {/* MAIN CONTENT */}
+      <div className="flex-1 flex flex-col overflow-hidden h-screen">
+        
+        {/* HEADER */}
+        <header className="bg-white shadow-sm border-b border-gray-100 h-16 flex items-center justify-between px-6 z-30">
+          <button 
+            onClick={() => setSidebarOpen(true)}
+            className="lg:hidden p-2 hover:bg-gray-100 rounded-lg text-gray-600"
+          >
+            <Menu size={24} />
+          </button>
+
+          <div className="flex-1 px-4 lg:px-8">
+            <h2 className="text-lg font-bold text-gray-800 hidden md:block">
+              Selamat Datang, <span className="text-[#991b1b]">BAPAK & IBU GURU HEBAT!</span>
+            </h2>
           </div>
 
-          {/* --- AREA PROFIL (INTERAKTIF) --- */}
-          <div className="relative">
-            <button 
-              onClick={() => setIsProfileOpen(!isProfileOpen)}
-              className="flex items-center gap-3 p-1 pr-2 rounded-xl hover:bg-gray-50 transition-colors focus:outline-none border border-transparent hover:border-gray-100"
-            >
-              {/* Teks Nama & Role */}
-              <div className="text-right hidden sm:block">
-                <p className="text-sm font-bold text-gray-800 flex items-center justify-end gap-1">
-                  {userRole === 'super_admin' && <Crown size={14} className="text-yellow-500" />}
-                  {userRole === 'admin' && <UserCog size={14} className="text-blue-500" />}
-                  {userRole === 'user' && <User size={14} className="text-gray-500" />}
-                  {getRoleLabel()}
-                </p>
-                <p className="text-xs text-gray-500 italic">PGRI Ranting Kalijaga</p>
-              </div>
-
-              {/* Lingkaran Foto Profil */}
-              <div className={`h-10 w-10 rounded-full flex items-center justify-center font-bold border-2 text-white shadow-sm overflow-hidden relative
-                ${userRole === 'super_admin' ? 'bg-yellow-500 border-yellow-200' : userRole === 'admin' ? 'bg-blue-600 border-blue-200' : 'bg-gray-500 border-gray-200'}
-              `}>
-                {profileImage ? (
-                  <img src={profileImage} alt="Profil" className="w-full h-full object-cover" />
-                ) : (
-                  <span>{userRole === 'super_admin' ? 'S' : userRole === 'admin' ? 'A' : 'U'}</span>
-                )}
-              </div>
-              
-              {/* Ikon Panah Kecil */}
-              <ChevronDown size={16} className={`text-gray-400 transition-transform duration-200 ${isProfileOpen ? 'rotate-180' : ''}`} />
-            </button>
-
-            {/* --- DROPDOWN MENU --- */}
-            {isProfileOpen && (
-              <>
-                {/* Layar Transparan (untuk menutup menu saat klik di luar) */}
-                <div className="fixed inset-0 z-10" onClick={() => setIsProfileOpen(false)}></div>
-                
-                {/* Kotak Menu */}
-                <div className="absolute right-0 mt-2 w-60 bg-white rounded-xl shadow-xl border border-gray-100 z-20 overflow-hidden animate-in fade-in zoom-in duration-200 origin-top-right">
-                  {/* Info User di Mobile (karena di header hidden) */}
-                  <div className="p-4 border-b border-gray-100 text-center bg-gray-50 sm:hidden">
-                    <p className="font-bold text-gray-800">Pak Dendi</p>
-                    <p className="text-xs text-gray-500">{getRoleLabel()}</p>
-                  </div>
-                  
-                  <div className="p-2 space-y-1">
-                    {/* Menu 1: Ubah Foto */}
-                    <button 
-                      onClick={triggerFileInput} 
-                      className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 hover:text-blue-600 rounded-lg flex items-center gap-3 transition-colors font-medium"
-                    >
-                      <Camera size={16} /> Ubah Foto Profil
-                    </button>
-                    <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
-
-                    <div className="border-t border-gray-100 my-1"></div>
-
-                    {/* Menu 2: Keluar */}
-                    <button 
-                      onClick={onLogout} 
-                      className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-3 transition-colors font-bold"
-                    >
-                      <LogOut size={16} /> Keluar Aplikasi
-                    </button>
-                  </div>
+          <div className="flex items-center gap-4">
+            {/* BAGIAN INI YANG DIPERBAIKI: AVATAR DINAMIS */}
+            <div className="text-right hidden md:block">
+              <p className="text-sm font-bold text-gray-800">{userProfile.name}</p>
+              <p className="text-xs text-gray-500">{userProfile.role}</p>
+            </div>
+            
+            <div className="w-10 h-10 rounded-full bg-gray-200 border-2 border-white shadow-sm overflow-hidden">
+              {userProfile.avatar_url ? (
+                <img 
+                  src={userProfile.avatar_url} 
+                  alt="Profile" 
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center bg-indigo-100 text-indigo-500">
+                  <User size={20} />
                 </div>
-              </>
-            )}
+              )}
+            </div>
           </div>
         </header>
 
-        <div className="p-4 md:p-8">
-          <Outlet context={{ userRole }} />
-        </div>
-      </main>
+        {/* CONTENT AREA */}
+        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-50 p-4 lg:p-8">
+          <Outlet context={{ userRole: 'admin' }} />
+        </main>
+
+      </div>
     </div>
   );
 };
-
-// Komponen Item Menu Navigasi
-const NavItem = ({ to, icon, label, onClick }: { to: string; icon: React.ReactNode; label: string, onClick?: () => void }) => (
-  <NavLink 
-    to={to} 
-    onClick={onClick}
-    className={({ isActive }) => `flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 font-medium ${isActive ? 'bg-red-900 text-yellow-400 border-l-4 border-yellow-400 shadow-sm' : 'text-red-100 hover:bg-red-700 hover:text-white hover:translate-x-1'}`}
-  >
-    {icon}<span>{label}</span>
-  </NavLink>
-);
 
 export default Layout;
