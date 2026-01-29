@@ -85,7 +85,7 @@ function App() {
         <Route path="finance" element={<Finance />} />
         <Route path="letters" element={<Letters />} />
         <Route path="donations" element={<Donations />} />
-        <Route path="info" element={<Info />} />
+        <Route path="news" element={<Info />} />
         <Route path="advocacy" element={<Advocacy />} />
         <Route path="counseling" element={<Counseling />} />
         <Route path="profile" element={<Profile />} />
