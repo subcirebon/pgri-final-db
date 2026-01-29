@@ -3,18 +3,16 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './Layout';
 import Login from './Login';
 
-// --- BAGIAN INI YANG PENTING: KITA PANGGIL FILE ASLINYA ---
+// --- IMPORT SEMUA FILE ASLI (FULL TEAM) ---
 import Dashboard from './Dashboard'; 
 import Members from './Members';     
-import Letters from './Letters';    // <--- INI KUNCINYA (Kabel disambungkan ke Letters.tsx)
+import Letters from './Letters';    
+import Finance from './Finance'; 
+import Donations from './Donations';
+import Advocacy from './Advocacy';     // <--- KABEL DISAMBUNGKAN
+import Counseling from './Counseling'; // <--- KABEL DISAMBUNGKAN
 import Info from './Info';
 import Profile from './Profile';
-
-// --- KOMPONEN SEMENTARA (Hanya untuk halaman yang BENAR-BENAR belum dibuat) ---
-const Finance = () => <div className="p-8"><h1 className="text-2xl font-bold">Keuangan</h1><p>Modul ini sedang dikembangkan.</p></div>;
-const Donations = () => <div className="p-8"><h1 className="text-2xl font-bold">Dana Sosial</h1><p>Modul ini sedang dikembangkan.</p></div>;
-const Advocacy = () => <div className="p-8"><h1 className="text-2xl font-bold">Advokasi</h1><p>Modul ini sedang dikembangkan.</p></div>;
-const Counseling = () => <div className="p-8"><h1 className="text-2xl font-bold">Konseling</h1><p>Modul ini sedang dikembangkan.</p></div>;
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -47,32 +45,32 @@ function App() {
     setIsAuthenticated(false);
     setUserRole('user');
     setUserName('');
-    localStorage.clear();
+    localStorage.clear(); 
   };
 
   return (
     <Routes>
+      {/* Halaman Login */}
       <Route 
         path="/login" 
         element={!isAuthenticated ? <Login onLogin={handleLogin} /> : <Navigate to="/" replace />} 
       />
 
+      {/* Halaman Utama (Perlu Login) */}
       <Route 
         path="/" 
         element={isAuthenticated ? <Layout onLogout={handleLogout} userRole={userRole} userName={userName} /> : <Navigate to="/login" replace />}
       >
-        {/* Routing ke Komponen Asli */}
+        {/* SEMUA ROUTING SEKARANG MENGARAH KE FILE ASLI */}
         <Route index element={<Dashboard />} />
         <Route path="members" element={<Members />} />
-        <Route path="letters" element={<Letters />} /> {/* Sekarang akan membuka file Letters.tsx */}
-        <Route path="news" element={<Info />} />
-        <Route path="about" element={<Profile />} />
-
-        {/* Routing ke Komponen Sementara */}
+        <Route path="letters" element={<Letters />} />
         <Route path="finance" element={<Finance />} />
         <Route path="donations" element={<Donations />} />
-        <Route path="advocacy" element={<Advocacy />} />
-        <Route path="counseling" element={<Counseling />} />
+        <Route path="advocacy" element={<Advocacy />} />   {/* Sudah Aktif */}
+        <Route path="counseling" element={<Counseling />} /> {/* Sudah Aktif */}
+        <Route path="news" element={<Info />} />
+        <Route path="about" element={<Profile />} />
       </Route>
     </Routes>
   );
