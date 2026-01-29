@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'; 
-import { Outlet, NavLink, useLocation } from 'react-router-dom';
+import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, Users, Wallet, Mail, Shield, Info, LogOut, Menu, X, 
   HeartHandshake, Building2, Crown, UserCog, User, Camera, ChevronDown, Loader2 
@@ -18,17 +18,18 @@ const Layout = ({ onLogout, userRole, userName }: LayoutProps) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   
-  // State khusus untuk Avatar URL (karena ini dimuat terpisah dari database)
+  // State khusus untuk Avatar URL
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  const location = useLocation(); // Untuk menandai menu aktif
+  const location = useLocation(); 
+  const navigate = useNavigate();
 
   // --- 1. LOAD FOTO PROFIL DARI DATABASE ---
   useEffect(() => {
     const loadUserAvatar = async () => {
-      // Ambil ID user yang sedang login dari penyimpanan browser
+      // Ambil ID user yang disimpan saat Login tadi
       const storedId = localStorage.getItem('pgri_user_id');
       
       if (storedId) {
@@ -49,7 +50,7 @@ const Layout = ({ onLogout, userRole, userName }: LayoutProps) => {
     };
 
     loadUserAvatar();
-  }, []);
+  }, []); // Dijalankan sekali saat Layout muncul
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
@@ -57,7 +58,7 @@ const Layout = ({ onLogout, userRole, userName }: LayoutProps) => {
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
 
-    // Ambil ID User
+    // Pastikan kita tahu siapa yang sedang upload
     const storedId = localStorage.getItem('pgri_user_id');
     if (!storedId) return alert("Sesi kadaluarsa, silakan login ulang.");
 
@@ -65,18 +66,18 @@ const Layout = ({ onLogout, userRole, userName }: LayoutProps) => {
       setUploading(true);
       const file = e.target.files[0];
       const fileExt = file.name.split('.').pop();
-      // Nama file unik: ID-TIMESTAMP.jpg
+      // Nama file unik: ID-TIMESTAMP.jpg (biar tidak bentrok)
       const fileName = `${storedId}-${Date.now()}.${fileExt}`;
       const filePath = `${fileName}`;
 
-      // A. Upload File Fisik ke Storage
+      // A. Upload File Fisik ke Storage 'avatars'
       const { error: uploadError } = await supabase.storage
         .from('avatars')
         .upload(filePath, file);
 
       if (uploadError) throw uploadError;
 
-      // B. Ambil URL Publik
+      // B. Ambil URL Publik (Link Gambar)
       const { data: urlData } = supabase.storage
         .from('avatars')
         .getPublicUrl(filePath);
@@ -91,7 +92,7 @@ const Layout = ({ onLogout, userRole, userName }: LayoutProps) => {
 
       if (updateError) throw updateError;
 
-      // D. Update Tampilan
+      // D. Update Tampilan di Layar
       setAvatarUrl(publicUrl);
       alert('Foto profil berhasil diperbarui!');
       setIsProfileOpen(false);
@@ -107,7 +108,7 @@ const Layout = ({ onLogout, userRole, userName }: LayoutProps) => {
     fileInputRef.current?.click();
   };
 
-  // Helper untuk menampilkan Badge Role
+  // Helper untuk menampilkan Badge Jabatan/Role
   const getRoleBadge = () => {
     if (userRole === 'super_admin') return <span className="flex items-center gap-1 text-[10px] bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-full font-bold border border-yellow-200"><Crown size={10}/> Super Admin</span>;
     if (userRole === 'admin') return <span className="flex items-center gap-1 text-[10px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-bold border border-blue-200"><UserCog size={10}/> Admin</span>;
@@ -116,7 +117,7 @@ const Layout = ({ onLogout, userRole, userName }: LayoutProps) => {
 
   return (
     <div className="flex min-h-screen bg-gray-50 font-sans relative">
-      {/* OVERLAY MOBILE */}
+      {/* OVERLAY MOBILE (Hitam Transparan) */}
       {isSidebarOpen && (
         <div 
           className="fixed inset-0 bg-black/50 z-20 md:hidden" 
@@ -124,23 +125,25 @@ const Layout = ({ onLogout, userRole, userName }: LayoutProps) => {
         />
       )}
 
-      {/* SIDEBAR */}
+      {/* SIDEBAR MERAH */}
       <aside className={`w-64 bg-red-800 text-white fixed h-full shadow-xl z-30 transition-transform duration-300 ease-in-out 
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 flex flex-col`}>
         
+        {/* LOGO AREA */}
         <div className="p-6 border-b border-red-700 flex flex-col items-center text-center">
           <button onClick={toggleSidebar} className="md:hidden absolute right-4 top-4 text-red-200">
             <X size={24} />
           </button>
           
           <div className="bg-white p-2 rounded-full mb-3 shadow-lg">
-            <img src="/logo-pgri.png" alt="Logo" className="w-12 h-12 object-contain"/>
+            <img src="/logo-pgri.png" alt="Logo" className="w-12 h-12 object-contain" />
           </div>
           <h2 className="text-xl font-bold tracking-wide text-white leading-tight">PGRI RANTING KALIJAGA</h2>
           <p className="text-[10px] text-red-200 mt-1 uppercase tracking-widest">Sistem Administrasi</p>
         </div>
         
-        <nav className="p-4 space-y-2 overflow-y-auto flex-1">
+        {/* MENU NAVIGASI */}
+        <nav className="p-4 space-y-2 overflow-y-auto flex-1 scrollbar-hide">
           <NavItem to="/" icon={<LayoutDashboard size={20} />} label="Dashboard" onClick={() => setIsSidebarOpen(false)} />
           <NavItem to="/news" icon={<Info size={20} />} label="Info dan Berita" onClick={() => setIsSidebarOpen(false)} />
           <NavItem to="/members" icon={<Users size={20} />} label="Data Anggota" onClick={() => setIsSidebarOpen(false)} />
@@ -152,27 +155,33 @@ const Layout = ({ onLogout, userRole, userName }: LayoutProps) => {
           <NavItem to="/about" icon={<Building2 size={20} />} label="Tentang Kami" onClick={() => setIsSidebarOpen(false)} />
         </nav>
 
+        {/* COPYRIGHT */}
         <div className="p-4 bg-red-900 border-t border-red-800 text-center text-xs text-red-300/50">
           &copy; 2026 PGRI Ranting Kalijaga
         </div>
       </aside>
 
-      {/* MAIN CONTENT */}
-      <main className="flex-1 md:ml-64 transition-all duration-300">
+      {/* KONTEN UTAMA (SEBELAH KANAN) */}
+      <main className="flex-1 md:ml-64 transition-all duration-300 flex flex-col min-h-screen">
+        
+        {/* HEADER ATAS */}
         <header className="bg-white p-4 shadow-sm border-b border-gray-200 flex justify-between items-center sticky top-0 z-10">
           <div className="flex items-center gap-3">
              <button onClick={toggleSidebar} className="md:hidden p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
                 <Menu size={24} />
              </button>
-             <h2 className="font-bold text-gray-700 text-sm md:text-lg">Selamat Datang, <span className="text-red-700 uppercase">{userName}</span>!</h2>
+             <h2 className="font-bold text-gray-700 text-sm md:text-lg">
+               Selamat Datang, <span className="text-red-700 uppercase">{userName}</span>!
+             </h2>
           </div>
 
-          {/* --- AREA PROFIL --- */}
+          {/* --- AREA PROFIL POJOK KANAN --- */}
           <div className="relative">
             <button 
               onClick={() => setIsProfileOpen(!isProfileOpen)}
               className="flex items-center gap-3 p-1 pr-2 rounded-xl hover:bg-gray-50 transition-colors focus:outline-none border border-transparent hover:border-gray-100"
             >
+              {/* Teks Nama & Role (Hidden di HP) */}
               <div className="text-right hidden sm:block">
                 <div className="flex items-center justify-end gap-2 mb-0.5">
                   <p className="text-sm font-bold text-gray-800">{userName}</p>
@@ -180,6 +189,7 @@ const Layout = ({ onLogout, userRole, userName }: LayoutProps) => {
                 <div className="flex justify-end">{getRoleBadge()}</div>
               </div>
 
+              {/* Lingkaran Foto */}
               <div className="h-10 w-10 rounded-full flex items-center justify-center font-bold bg-gray-500 border-2 border-gray-200 text-white shadow-sm overflow-hidden relative">
                 {avatarUrl ? (
                   <img src={avatarUrl} alt="Profil" className="w-full h-full object-cover" />
@@ -202,6 +212,7 @@ const Layout = ({ onLogout, userRole, userName }: LayoutProps) => {
                   </div>
                   
                   <div className="p-2 space-y-1">
+                    {/* Menu 1: Upload Foto */}
                     <button 
                       onClick={triggerFileInput} 
                       disabled={uploading}
@@ -210,10 +221,12 @@ const Layout = ({ onLogout, userRole, userName }: LayoutProps) => {
                       {uploading ? <Loader2 size={16} className="animate-spin text-blue-600"/> : <Camera size={16} />} 
                       {uploading ? 'Sedang Mengupload...' : 'Ubah Foto Profil'}
                     </button>
+                    {/* Input File Tersembunyi */}
                     <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
 
                     <div className="border-t border-gray-100 my-1"></div>
 
+                    {/* Menu 2: Logout */}
                     <button 
                       onClick={onLogout} 
                       className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-3 transition-colors font-bold"
@@ -227,8 +240,9 @@ const Layout = ({ onLogout, userRole, userName }: LayoutProps) => {
           </div>
         </header>
 
-        <div className="p-4 md:p-8">
-          {/* Outlet mengirimkan context userRole ke halaman anak */}
+        {/* AREA KONTEN (Outlet) */}
+        <div className="p-4 md:p-8 flex-1">
+          {/* Mengirimkan data userRole ke semua halaman di bawahnya */}
           <Outlet context={{ userRole }} />
         </div>
       </main>
@@ -236,7 +250,7 @@ const Layout = ({ onLogout, userRole, userName }: LayoutProps) => {
   );
 };
 
-// Komponen Item Menu Navigasi
+// Komponen Kecil untuk Tombol Menu
 const NavItem = ({ to, icon, label, onClick }: { to: string; icon: React.ReactNode; label: string, onClick?: () => void }) => (
   <NavLink 
     to={to} 
