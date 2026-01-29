@@ -7,7 +7,7 @@ import Members from './Members';
 import Finance from './Finance';
 import Letters from './Letters';
 import Donations from './Donations';
-import Info from './Info';
+import News from './Info';
 import Advocacy from './Advocacy';
 import Counseling from './Counseling';
 import Profile from './Profile';
