@@ -3,15 +3,15 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './Layout';
 import Login from './Login';
 
-// --- IMPORT SEMUA FILE ASLI (FULL TEAM) ---
+// --- IMPORT SEMUA FILE ASLI (FULL MODULES) ---
 import Dashboard from './Dashboard'; 
 import Members from './Members';     
-import Letters from './Letters';    
-import Finance from './Finance'; 
-import Donations from './Donations';
-import Advocacy from './Advocacy';     // <--- KABEL DISAMBUNGKAN
-import Counseling from './Counseling'; // <--- KABEL DISAMBUNGKAN
-import Info from './Info';
+import Letters from './Letters';     // Mengaktifkan Surat Menyurat
+import Finance from './Finance';     // Mengaktifkan Keuangan
+import Donations from './Donations'; // Mengaktifkan Dana Sosial
+import Advocacy from './Advocacy';   // Mengaktifkan Advokasi
+import Counseling from './Counseling'; // Mengaktifkan Konseling
+import Info from './Info';           // Mengaktifkan Info & Berita
 import Profile from './Profile';
 
 function App() {
@@ -20,7 +20,7 @@ function App() {
   const [userName, setUserName] = useState('');
 
   useEffect(() => {
-    // Cek apakah user sudah login sebelumnya
+    // Cek sesi login saat aplikasi dibuka
     const storedAuth = localStorage.getItem('pgri_auth');
     const storedRole = localStorage.getItem('pgri_role');
     const storedName = localStorage.getItem('pgri_name');
@@ -56,19 +56,19 @@ function App() {
         element={!isAuthenticated ? <Login onLogin={handleLogin} /> : <Navigate to="/" replace />} 
       />
 
-      {/* Halaman Utama (Perlu Login) */}
+      {/* Halaman Utama (Protected Routes) */}
       <Route 
         path="/" 
         element={isAuthenticated ? <Layout onLogout={handleLogout} userRole={userRole} userName={userName} /> : <Navigate to="/login" replace />}
       >
-        {/* SEMUA ROUTING SEKARANG MENGARAH KE FILE ASLI */}
+        {/* SEMUA ROUTE KINI MENGARAH KE FILE ASLI */}
         <Route index element={<Dashboard />} />
         <Route path="members" element={<Members />} />
         <Route path="letters" element={<Letters />} />
         <Route path="finance" element={<Finance />} />
         <Route path="donations" element={<Donations />} />
-        <Route path="advocacy" element={<Advocacy />} />   {/* Sudah Aktif */}
-        <Route path="counseling" element={<Counseling />} /> {/* Sudah Aktif */}
+        <Route path="advocacy" element={<Advocacy />} />
+        <Route path="counseling" element={<Counseling />} />
         <Route path="news" element={<Info />} />
         <Route path="about" element={<Profile />} />
       </Route>

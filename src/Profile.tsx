@@ -197,7 +197,7 @@ const Profile = () => {
           />
           <div className="absolute inset-0 bg-black/30 group-hover:bg-black/10 transition-colors flex items-center justify-center">
              <a 
-               href="https://maps.google.com/?q=JL.+Teratai+Raya+I,+Kalijaga,+Cirebon" 
+               href="https://maps.app.goo.gl/3HBqusDgkLSegUuq9" 
                target="_blank" 
                rel="noreferrer"
                className="bg-white text-red-700 px-6 py-3 rounded-full font-bold shadow-xl hover:bg-red-50 hover:scale-105 transition-all flex items-center gap-2 text-sm cursor-pointer animate-bounce"
