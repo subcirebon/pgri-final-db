@@ -1,24 +1,22 @@
 import React, { useState } from 'react';
 import jsPDF from 'jspdf';
+import { Printer, Eye, FileText, Download } from 'lucide-react';
 
 // 1. Definisikan Tipe Data Surat
 interface Letter {
   id: number;
-  ref_number: string; // Nomor Surat
-  date: string;       // Tanggal (YYYY-MM-DD)
-  attachment: string; // Lampiran
-  subject: string;    // Perihal
-  sender_receiver: string; // Kepada Yth
+  ref_number: string;
+  date: string;
+  attachment: string;
+  subject: string;
+  sender_receiver: string;
   type: 'UNDANGAN' | 'BIASA';
-  // Khusus Undangan
   event_date?: string;
   venue?: string;
   agenda?: string;
-  // Khusus Surat Biasa
   body?: string;
 }
 
-// 2. Helper Format Tanggal Indonesia
 const formatTanggalIndo = (dateString: string) => {
   const date = new Date(dateString);
   return date.toLocaleDateString('id-ID', {
@@ -29,7 +27,7 @@ const formatTanggalIndo = (dateString: string) => {
 };
 
 const Letters = () => {
-  // 3. Dummy Data (Contoh Surat)
+  // DATA DUMMY
   const [letters] = useState<Letter[]>([
     {
       id: 1,
@@ -57,185 +55,197 @@ const Letters = () => {
 
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
-  // 4. FUNGSI GENERATE PDF (Kode Kamu, sudah dirapikan tipe datanya)
+  // --- FUNGSI UTAMA GENERATE PDF ---
   const generatePDF = (l: Letter, action: 'preview' | 'download') => {
-    // SETUP
-    // Format: [215, 330] adalah ukuran F4 dalam mm
-    const doc = new jsPDF({ unit: 'mm', format: [215, 330] });
-    
-    // Setting Layout
-    const marginKiri = 20;
-    const lebarTeks = 175; // Lebar area tulis
-    const centerPage = 107.5; // Titik tengah kertas (215 / 2)
-    const ttdKiri = 55;       // Titik tengah TTD Ketua
-    const ttdKanan = 160;     // Titik tengah TTD Sekretaris
-    
-    // Cursor System (Posisi Y awal)
-    // 55mm = 5.5cm (Sesuai permintaan margin atas kosong untuk Kop Surat)
-    let y = 55; 
-    
-    // Fungsi helper untuk menurunkan kursor
-    const turun = (mm: number) => { y += mm; };
-  
-    doc.setFont('times', 'normal');
-    doc.setFontSize(12);
-  
-    // --- HEADER TANGGAL ---
-    // Posisi tanggal di kanan (X=145 cukup aman)
-    doc.text(`Cirebon, ${formatTanggalIndo(l.date)}`, 145, y); 
-    turun(10); 
-    
-    // --- HEADER NOMOR, LAMPIRAN, PERIHAL ---
-    const labelX = 20; const titikDuaX = 45; const isiX = 48;
-    
-    doc.text('Nomor', labelX, y); doc.text(':', titikDuaX, y); doc.text(l.ref_number, isiX, y);
-    turun(6);
-    doc.text('Lampiran', labelX, y); doc.text(':', titikDuaX, y); doc.text(l.attachment, isiX, y);
-    turun(6);
-    doc.text('Perihal', labelX, y); doc.text(':', titikDuaX, y); doc.setFont('times', 'bold'); doc.text(l.subject, isiX, y);
-  
-    // --- KEPADA YTH ---
-    turun(15); 
-    doc.setFont('times', 'normal');
-    doc.text('Kepada Yth,', marginKiri, y);
-    turun(5);
-    doc.setFont('times', 'bold');
-    doc.text(`${l.sender_receiver}`, marginKiri, y);
-    turun(5);
-    doc.setFont('times', 'normal');
-    doc.text('di Tempat', marginKiri, y);
-  
-    // --- PEMBUKA ---
-    turun(15);
-    doc.text('Dengan hormat,', marginKiri, y);
-    turun(8);
-  
-    // --- ISI SURAT ---
-    const isiSurat = l.type === 'UNDANGAN' 
-      ? `Mengharap kehadiran Bapak/Ibu pada:\n\nHari/Tanggal : ${l.event_date}\nTempat : ${l.venue}\nAcara : ${l.agenda}\n\nDemikian undangan ini kami sampaikan.`
-      : (l.body || '') + '\n\nDemikian surat ini kami sampaikan untuk dipergunakan sebagaimana mestinya.';
-  
-    // Teknik Wrapping Text (Agar tidak bablas ke kanan)
-    const barisTeks = doc.splitTextToSize(isiSurat, lebarTeks);
-  
-    barisTeks.forEach((baris: string) => {
-        // Cek Page Break (jika y > 280mm, buat halaman baru)
-        if (y > 280) {
-            doc.addPage();
-            y = 40; // Reset ke atas (margin standar halaman kedua)
-        }
-        
-        // Cetak baris dengan alignment justify (Rata Kanan Kiri)
-        doc.text(baris, marginKiri, y, { align: 'justify', maxWidth: lebarTeks });
-        turun(6); // Jarak antar baris
+    // 1. Setup Kertas F4 (215mm x 330mm)
+    const doc = new jsPDF({ 
+        orientation: 'portrait', 
+        unit: 'mm', 
+        format: [215, 330] 
     });
-  
-    // --- AREA TANDA TANGAN ---
-    turun(10);
-  
-    // Cek sisa ruang, kalau mepet bawah, pindah halaman
-    if (y > 250) { 
-        doc.addPage();
-        y = 40;
-    } else if (y < 200) {
-        // Kalau surat pendek, paksa TTD agak ke bawah biar proporsional
-        y = 200;
-    }
-  
-    // Header Organisasi
-    doc.setFont('times', 'bold');
-    doc.text('Pengurus Ranting Kalijaga', centerPage, y, { align: 'center' });
-    
-    turun(7); 
+
+    // Font Times New Roman
     doc.setFont('times', 'normal');
-    // Jabatan
-    doc.text('Ketua,', ttdKiri, y, { align: 'center' });
-    doc.text('Sekretaris,', ttdKanan, y, { align: 'center' });
     
-    turun(30); // Ruang untuk Tanda Tangan Basah
+    // Setting Margin & Layout
+    const marginLeft = 20;
+    const marginTop = 55; // 5.5cm Kosong untuk KOP
+    const textWidth = 175; // Lebar area tulis (215 - 20 - 20)
     
-    // Nama Pejabat
-    doc.setFont('times', 'bold', undefined); // Reset weight
-    doc.setFont('times', 'bold');
+    let cursorY = marginTop; 
+
+    // --- HEADER SURAT ---
+    doc.setFontSize(12);
+
+    // Tanggal Surat (Kanan)
+    const tanggal = `Cirebon, ${formatTanggalIndo(l.date)}`;
+    doc.text(tanggal, 140, cursorY);
     
-    // Kiri (Ketua)
-    doc.text('DENDI SUPARMAN, S.Pd.SD', ttdKiri, y, { align: 'center' });
-    doc.line(ttdKiri - 30, y + 1, ttdKiri + 30, y + 1); // Garis bawah nama
-    doc.setFont('times', 'normal');
-    doc.text('NPA. 00001', ttdKiri, y + 6, { align: 'center' }); 
-  
-    // Kanan (Sekretaris)
-    doc.setFont('times', 'bold');
-    doc.text('ABDY EKA PRASETIA, S.Pd', ttdKanan, y, { align: 'center' });
-    doc.line(ttdKanan - 30, y + 1, ttdKanan + 30, y + 1); // Garis bawah nama
-    doc.setFont('times', 'normal');
-    doc.text('NPA. 00003', ttdKanan, y + 6, { align: 'center' }); 
-  
-    // --- OUTPUT ---
-    if (action === 'preview') { 
-        // Buat URL blob untuk preview di browser
-        setPdfUrl(doc.output('bloburl')); 
+    // Header Kiri
+    doc.text(`Nomor     : ${l.ref_number}`, marginLeft, cursorY);
+    cursorY += 6;
+    doc.text(`Lampiran : ${l.attachment}`, marginLeft, cursorY);
+    cursorY += 6;
+    doc.text(`Perihal     : ${l.subject}`, marginLeft, cursorY);
+    cursorY += 15;
+
+    // Kepada Yth
+    doc.text(`Kepada Yth.`, marginLeft, cursorY);
+    cursorY += 6;
+    doc.setFont("times", "bold");
+    doc.text(l.sender_receiver, marginLeft, cursorY);
+    doc.setFont("times", "normal");
+    cursorY += 6;
+    doc.text(`di`, marginLeft, cursorY);
+    cursorY += 6;
+    doc.text(`    Tempat`, marginLeft, cursorY);
+    cursorY += 15;
+
+    // --- ISI SURAT ---
+    // Salam Pembuka
+    doc.text("Assalamu'alaikum Wr. Wb.", marginLeft, cursorY);
+    cursorY += 10;
+
+    // Konten Utama
+    let kontenTeks = "";
+    if (l.type === 'UNDANGAN') {
+        kontenTeks = `Mengharap kehadiran Bapak/Ibu pada rapat dinas yang akan dilaksanakan pada:`;
     } else {
-        // Langsung download file
-        doc.save(`Surat_${l.ref_number.replace(/\//g, '-')}.pdf`);
+        kontenTeks = l.body || "";
+    }
+
+    // Teknik Justify (Rata Kanan Kiri)
+    const splitText = doc.splitTextToSize(kontenTeks, textWidth);
+    doc.text(splitText, marginLeft, cursorY, { align: "justify", maxWidth: textWidth });
+    
+    // Update posisi kursor berdasarkan panjang teks
+    cursorY += (splitText.length * 7) + 5; 
+
+    // Jika Undangan, tampilkan detail acara
+    if (l.type === 'UNDANGAN') {
+        doc.text(`Hari/Tanggal : ${l.event_date}`, marginLeft + 10, cursorY);
+        cursorY += 7;
+        doc.text(`Waktu            : 08.00 WIB s.d Selesai`, marginLeft + 10, cursorY); 
+        cursorY += 7;
+        doc.text(`Tempat          : ${l.venue}`, marginLeft + 10, cursorY);
+        cursorY += 7;
+        doc.text(`Acara            : ${l.agenda}`, marginLeft + 10, cursorY);
+        cursorY += 15;
+    }
+
+    // Penutup
+    const penutup = "Demikian surat ini kami sampaikan, atas perhatian dan kerjasama Bapak/Ibu kami ucapkan terima kasih.";
+    const splitPenutup = doc.splitTextToSize(penutup, textWidth);
+    doc.text(splitPenutup, marginLeft, cursorY, { align: "justify", maxWidth: textWidth });
+    cursorY += 10;
+
+    doc.text("Wassalamu'alaikum Wr. Wb.", marginLeft, cursorY);
+    cursorY += 25;
+
+    // --- TANDA TANGAN ---
+    // Pastikan tidak mepet bawah kertas
+    if (cursorY > 260) {
+        doc.addPage();
+        cursorY = 40;
+    }
+
+    const centerKiri = 60;
+    const centerKanan = 155;
+
+    // Jabatan
+    doc.text("Ketua,", centerKiri, cursorY, { align: "center" });
+    doc.text("Sekretaris,", centerKanan, cursorY, { align: "center" });
+
+    cursorY += 25; // Ruang Tanda Tangan
+
+    // Nama Pejabat (Bold & Underline)
+    doc.setFont("times", "bold");
+    
+    // KETUA: DENDI SUPARMAN
+    const namaKetua = "DENDI SUPARMAN, S.Pd.SD";
+    doc.text(namaKetua, centerKiri, cursorY, { align: "center" });
+    const widthKetua = doc.getTextWidth(namaKetua);
+    doc.line(centerKiri - (widthKetua/2), cursorY + 1, centerKiri + (widthKetua/2), cursorY + 1); // Garis bawah
+
+    // SEKRETARIS: ABDY EKA PRASETIA
+    const namaSekretaris = "ABDY EKA PRASETIA, S.Pd";
+    doc.text(namaSekretaris, centerKanan, cursorY, { align: "center" });
+    const widthSekretaris = doc.getTextWidth(namaSekretaris);
+    doc.line(centerKanan - (widthSekretaris/2), cursorY + 1, centerKanan + (widthSekretaris/2), cursorY + 1); // Garis bawah
+
+    cursorY += 5;
+
+    // NPA (Kembali ke NPA default Anda)
+    doc.setFont("times", "normal");
+    doc.setFontSize(11);
+    doc.text("NPA. 00001", centerKiri, cursorY, { align: "center" });
+    doc.text("NPA. 00003", centerKanan, cursorY, { align: "center" });
+
+    // --- OUTPUT ---
+    if (action === 'preview') {
+        const pdfBlob = doc.output('bloburl');
+        setPdfUrl(pdfBlob.toString()); 
+    } else {
+        doc.save(`Surat-${l.ref_number.replace(/\//g, '-')}.pdf`);
     }
   };
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
-      <div className="max-w-6xl mx-auto">
-        <h1 className="text-3xl font-bold text-gray-800 mb-8">Sistem Persuratan Digital</h1>
+    <div className="flex flex-col h-[calc(100vh-100px)] gap-6">
+      <div className="flex items-center justify-between mb-2">
+        <div>
+           <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+             <FileText className="text-red-600"/> Surat Menyurat
+           </h1>
+           <p className="text-gray-500 text-sm">Kelola dan cetak surat resmi organisasi.</p>
+        </div>
+      </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* LIST SURAT */}
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <h2 className="text-xl font-semibold mb-4 text-gray-700">Daftar Surat Keluar</h2>
-            <div className="space-y-4">
-              {letters.map((l) => (
-                <div key={l.id} className="p-4 border rounded-lg hover:bg-gray-50 transition-colors">
-                  <div className="flex justify-between items-start mb-2">
-                    <span className={`px-2 py-1 text-xs rounded-full ${l.type === 'UNDANGAN' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+      <div className="flex flex-col lg:flex-row gap-6 flex-1 overflow-hidden">
+        {/* LIST SURAT */}
+        <div className="w-full lg:w-1/3 bg-white border border-gray-200 rounded-xl flex flex-col shadow-sm">
+           <div className="p-4 border-b bg-gray-50 rounded-t-xl">
+             <h2 className="font-bold text-gray-700">Daftar Surat</h2>
+           </div>
+           <div className="flex-1 overflow-y-auto p-4 space-y-3">
+             {letters.map((l) => (
+               <div key={l.id} className="p-4 border border-gray-100 rounded-lg hover:border-red-200 hover:bg-red-50 transition group bg-white shadow-sm">
+                 <div className="flex justify-between items-start mb-2">
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${l.type === 'UNDANGAN' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>
                       {l.type}
                     </span>
-                    <span className="text-sm text-gray-500">{formatTanggalIndo(l.date)}</span>
-                  </div>
-                  <h3 className="font-bold text-gray-800">{l.subject}</h3>
-                  <p className="text-sm text-gray-600 mb-3">No: {l.ref_number}</p>
-                  
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={() => generatePDF(l, 'preview')}
-                      className="flex-1 px-3 py-2 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700"
-                    >
-                      Lihat PDF
-                    </button>
-                    <button 
-                      onClick={() => generatePDF(l, 'download')}
-                      className="px-3 py-2 border border-gray-300 text-gray-700 text-sm rounded hover:bg-gray-100"
-                    >
-                      Download
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+                    <span className="text-xs text-gray-400">{l.date}</span>
+                 </div>
+                 <h3 className="font-bold text-gray-800 text-sm mb-1">{l.subject}</h3>
+                 <p className="text-xs text-gray-500 mb-3 truncate">Kpd: {l.sender_receiver}</p>
+                 
+                 <div className="flex gap-2 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity">
+                   <button onClick={() => generatePDF(l, 'preview')} className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-red-600 text-white text-xs rounded hover:bg-red-700">
+                     <Eye size={14}/> Preview
+                   </button>
+                   <button onClick={() => generatePDF(l, 'download')} className="flex items-center justify-center gap-1 px-3 py-1.5 border border-gray-300 text-gray-600 text-xs rounded hover:bg-gray-50">
+                     <Download size={14}/>
+                   </button>
+                 </div>
+               </div>
+             ))}
+           </div>
+        </div>
 
-          {/* PREVIEW PDF */}
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-[600px]">
-            <h2 className="text-xl font-semibold mb-4 text-gray-700">Preview Dokumen</h2>
-            {pdfUrl ? (
-              <iframe 
-                src={pdfUrl} 
-                className="w-full h-[500px] border rounded bg-gray-200"
-                title="PDF Preview"
-              />
-            ) : (
-              <div className="flex items-center justify-center h-[500px] bg-gray-50 rounded border border-dashed border-gray-300 text-gray-400">
-                <p>Pilih surat untuk melihat preview</p>
-              </div>
-            )}
-          </div>
+        {/* PREVIEW AREA */}
+        <div className="flex-1 bg-gray-500/10 rounded-xl flex items-center justify-center p-4 lg:p-8 overflow-y-auto border border-gray-200/50">
+          {pdfUrl ? (
+            <iframe 
+              src={pdfUrl} 
+              className="w-full h-full min-h-[500px] rounded-lg shadow-2xl bg-white"
+              title="PDF Preview"
+            />
+          ) : (
+            <div className="text-center text-gray-400">
+              <Printer size={48} className="mx-auto mb-2 opacity-20"/>
+              <p>Pilih salah satu surat di samping<br/>untuk melihat preview PDF</p>
+            </div>
+          )}
         </div>
       </div>
     </div>
