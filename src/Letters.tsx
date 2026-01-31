@@ -241,42 +241,48 @@ const Letters = () => {
           selectedType.formType === 'invitation' ? { margin: [30, 10, 0, 10], table: { widths: [80, 10, '*'], body: [ ['Hari', ':', formData.hari], ['Tanggal', ':', formData.tanggal_acara], ['Waktu', ':', formData.waktu], ['Tempat', ':', formData.tempat], ] }, layout: 'noBorders' } : { text: formData.isi_utama, alignment: 'justify', margin: [0, 10, 0, 10] },
           { text: formData.penutup, alignment: 'justify', margin: [0, 0, 0, 10] },
           
-          // --- LAYOUT TANDA TANGAN (FINAL FIX) ---
+          // --- LAYOUT TANDA TANGAN (PERBAIKAN WRAPPING) ---
           { stack: [ { text: isFormal ? titiMangsa : '', margin: [0, 0, 0, 2] }, { text: 'PENGURUS PGRI RANTING KALIJAGA', bold: true } ], alignment: 'center', margin: [0, 15, 0, 5] },
           { 
             table: { 
-              widths: ['50%', '50%'], // 2 Kolom Seimbang
+              widths: ['50%', '50%'], 
               body: [ 
                 [
                   // KETUA (Kiri)
                   { 
                      stack: [
-                        { text: 'Ketua', alignment: 'center', bold: false, margin: [0, 0, 0, 45] }, // Jarak untuk TTD
-                        // Urutan Stack: Nama dulu, baru Gambar TTD ditarik ke atas (negative margin) agar "menimpa"
+                        { text: 'Ketua', alignment: 'center', bold: false, margin: [0, 0, 0, 40] }, // Jarak Text ke TTD
                         { text: '( DENDI SUPARMAN, S.Pd.SD )', alignment: 'center', bold: true, decoration: 'underline' },
                         { text: 'NPA. 00001', alignment: 'center', bold: true },
-                        // Tanda Tangan (Overlay)
-                        { image: ttdKetua, width: 110, alignment: 'center', margin: [0, -75, 0, 0] },
-                        // Stempel (Overlay Tengah) - Didorong ke kanan dari kolom kiri
-                        { image: stempel, width: 90, alignment: 'center', margin: [120, -85, 0, 0], opacity: 0.9 }
+                        // Tanda Tangan (Naik menimpa nama)
+                        { image: ttdKetua, width: 110, alignment: 'center', margin: [0, -70, 0, 0] },
+                        // Stempel (Geser kanan ke tengah, Naik menimpa TTD)
+                        { image: stempel, width: 90, alignment: 'center', margin: [80, -95, 0, 0], opacity: 0.9 }
                      ],
                      alignment: 'center'
                   },
                   // SEKRETARIS (Kanan)
                   { 
                      stack: [
-                        { text: 'Sekretaris', alignment: 'center', bold: true, margin: [0, 0, 0, 45] },
+                        { text: 'Sekretaris', alignment: 'center', bold: true, margin: [0, 0, 0, 40] },
                         { text: '( ABDY EKA PRASETIA, S.Pd )', alignment: 'center', bold: true, decoration: 'underline' },
                         { text: 'NPA. 00002', alignment: 'center', bold: true },
-                        // Tanda Tangan (Overlay)
-                        { image: ttdSekretaris, width: 110, alignment: 'center', margin: [0, -75, 0, 0] }
+                        // Tanda Tangan (Naik menimpa nama)
+                        { image: ttdSekretaris, width: 110, alignment: 'center', margin: [0, -70, 0, 0] }
                      ],
                      alignment: 'center'
                   }
                 ] 
               ] 
             }, 
-            layout: 'noBorders' 
+            // Layout khusus: padding 0 agar nama panjang tidak terpotong
+            layout: {
+                defaultBorder: false,
+                paddingLeft: function(i) { return 0; },
+                paddingRight: function(i) { return 0; },
+                paddingTop: function(i) { return 0; },
+                paddingBottom: function(i) { return 0; },
+            } 
           }
         ]
       };
