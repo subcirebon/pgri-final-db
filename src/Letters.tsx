@@ -27,19 +27,9 @@ pdfMakeInstance.fonts = {
   } 
 };
 
-// --- DATA GAMBAR (LINK SUPABASE ANDA) ---
-const LOGO_URL = "https://upload.wikimedia.org/wikipedia/commons/2/2a/Persatuan_Guru_Republik_Indonesia.png";
-const URL_TTD_KETUA = "https://vuzwlgwzhiuosgeohhjl.supabase.co/storage/v1/object/public/letters-archive/ttd-ketua.png";
-const URL_TTD_SEKRETARIS = "https://vuzwlgwzhiuosgeohhjl.supabase.co/storage/v1/object/public/letters-archive/ttd-sekretaris.png";
-const URL_STEMPEL = "https://vuzwlgwzhiuosgeohhjl.supabase.co/storage/v1/object/public/letters-archive/stempel.png";
-
 // --- HELPER GAMBAR ---
 const getBase64ImageFromURL = (url: string) => {
   return new Promise((resolve) => {
-    if (!url || url === "") {
-        resolve("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=");
-        return;
-    }
     const img = new Image(); 
     img.setAttribute("crossOrigin", "anonymous");
     const fallback = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
@@ -62,6 +52,8 @@ const getBase64ImageFromURL = (url: string) => {
     img.src = url;
   });
 };
+
+const LOGO_URL = "https://upload.wikimedia.org/wikipedia/commons/2/2a/Persatuan_Guru_Republik_Indonesia.png";
 
 const LETTER_TYPES = [
   { label: 'Surat Undangan', code: 'Und', formType: 'invitation' },
@@ -95,10 +87,13 @@ const Letters = () => {
   const [lastLetter, setLastLetter] = useState<string>('Memuat...');
   const [uploading, setUploading] = useState(false);
   
+  // State untuk Upload Arsip Keluar
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeUploadId, setActiveUploadId] = useState<string | null>(null);
 
+  // --- STATE SURAT MASUK ---
+  const [showInModal, setShowInModal] = useState(false);
   const [inForm, setInForm] = useState({
     date_received: new Date().toISOString().split('T')[0],
     sender: '',
@@ -107,7 +102,6 @@ const Letters = () => {
     file: null as File | null
   });
 
-  const [showInModal, setShowInModal] = useState(false);
   const currentYear = new Date().getFullYear();
 
   const [formData, setFormData] = useState({
@@ -137,10 +131,12 @@ const Letters = () => {
 
   useEffect(() => { fetchData(); }, []);
 
-  // --- ARSIP UPLOAD ---
+  // --- TRIGGER UPLOAD FILE SURAT KELUAR ---
   const triggerUploadArchive = (id: string) => {
     setActiveUploadId(id);
-    if (fileInputRef.current) fileInputRef.current.click();
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
   };
 
   const handleArchiveFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -151,15 +147,30 @@ const Letters = () => {
     try {
       const fileExt = file.name.split('.').pop();
       const fileName = `outgoing/archive_${activeUploadId}_${Date.now()}.${fileExt}`;
+      
+      // Upload ke Storage
       const { error: uploadError } = await supabase.storage.from('letters-archive').upload(fileName, file);
       if (uploadError) throw uploadError;
+
+      // Dapatkan URL
       const { data } = supabase.storage.from('letters-archive').getPublicUrl(fileName);
-      const { error: dbError } = await supabase.from('letters_out').update({ file_url: data.publicUrl }).eq('id', activeUploadId);
+
+      // Update Database
+      const { error: dbError } = await supabase.from('letters_out')
+        .update({ file_url: data.publicUrl })
+        .eq('id', activeUploadId);
+
       if (dbError) throw dbError;
 
       alert("Arsip berhasil diupload!");
       fetchData();
-    } catch (err: any) { alert("Gagal upload: " + err.message); } finally { setUploadingId(null); setActiveUploadId(null); if (fileInputRef.current) fileInputRef.current.value = ''; }
+    } catch (err: any) {
+      alert("Gagal upload: " + err.message);
+    } finally {
+      setUploadingId(null);
+      setActiveUploadId(null);
+      if (fileInputRef.current) fileInputRef.current.value = ''; // Reset input
+    }
   };
 
   // --- SAVE SURAT MASUK ---
@@ -192,34 +203,33 @@ const Letters = () => {
   };
 
   // --- CETAK LANGSUNG (Direct Print) ---
+  // Fitur: Langsung buka PDF, Catat data ke DB, TANPA Upload file (Anti Macet)
   const handleDirectPrint = async () => {
     setUploading(true);
     try {
       const isFormal = selectedType.formType === 'formal';
-      const [logoBase64, ttdKetua, ttdSekretaris, stempel] = await Promise.all([
-        getBase64ImageFromURL(LOGO_URL),
-        getBase64ImageFromURL(URL_TTD_KETUA),
-        getBase64ImageFromURL(URL_TTD_SEKRETARIS),
-        getBase64ImageFromURL(URL_STEMPEL)
-      ]);
+      const logoBase64 = await getBase64ImageFromURL(LOGO_URL);
 
+      // 1. Simpan Data Surat ke Database (Metadata saja)
+      // Ini penting agar nomor surat tercatat di sistem
       await supabase.from('letters_out').insert([{ 
         date_sent: new Date(), 
         letter_number: fullLetterNumber, 
         recipient: isFormal ? '-' : formData.tujuan, 
         subject: selectedType.label + ' ' + formData.perihal,
-        file_url: null 
+        file_url: null // Kita kosongkan karena tidak upload file
       }]);
 
+      // 2. Buat Dokumen PDF
       const docDefinition: any = {
         pageSize: 'FOLIO',
         pageMargins: [72, 40, 72, 72],
         defaultStyle: { font: 'Times', fontSize: 12 },
         content: [
-          // KOP SURAT (KEMBALI KE POSISI KIRI)
+          // KOP SURAT
           {
             columns: [
-              { image: logoBase64, width: 90, margin: [0, 0, 10, 0] }, 
+              { image: logoBase64, width: 90, margin: [0, 0, 10, 0] },
               {
                 width: '*',
                 stack: [
@@ -241,69 +251,35 @@ const Letters = () => {
           selectedType.formType === 'invitation' ? { margin: [30, 10, 0, 10], table: { widths: [80, 10, '*'], body: [ ['Hari', ':', formData.hari], ['Tanggal', ':', formData.tanggal_acara], ['Waktu', ':', formData.waktu], ['Tempat', ':', formData.tempat], ] }, layout: 'noBorders' } : { text: formData.isi_utama, alignment: 'justify', margin: [0, 10, 0, 10] },
           { text: formData.penutup, alignment: 'justify', margin: [0, 0, 0, 10] },
           
-          // --- LAYOUT TANDA TANGAN (OVERLAY PADA NAMA) ---
-          { stack: [ { text: isFormal ? titiMangsa : '', margin: [0, 0, 0, 2] }, { text: 'PENGURUS PGRI RANTING KALIJAGA', bold: true } ], alignment: 'center', margin: [0, 15, 0, 10] },
-          { 
-            table: { 
-              widths: ['50%', '50%'], 
-              body: [ 
-                [
-                  // KETUA (Kiri)
-                  { 
-                     stack: [
-                        { text: 'Ketua', alignment: 'center', bold: false },
-                        // Spacer agar ada jarak untuk gambar di atas nama
-                        { text: '\n\n\n\n', fontSize: 10 }, 
-                        
-                        // Nama & NPA (Base Layer)
-                        { text: 'DENDI SUPARMAN, S.Pd.SD', alignment: 'center', bold: true, decoration: 'underline', fontSize: 11 },
-                        { text: 'NPA. 00001', alignment: 'center', bold: true, fontSize: 11 },
-
-                        // TTD Ketua (Overlay naik menimpa Nama)
-                        { image: ttdKetua, width: 85, alignment: 'center', margin: [0, -75, 0, 0] },
-                        
-                        // Stempel (Geser Kanan agar di tengah halaman, Naik menimpa Nama)
-                        { image: stempel, width: 90, alignment: 'center', margin: [140, -95, 0, 0], opacity: 0.9 }
-                     ],
-                     alignment: 'center'
-                  },
-                  // SEKRETARIS (Kanan)
-                  { 
-                     stack: [
-                        { text: 'Sekretaris', alignment: 'center', bold: true },
-                        { text: '\n\n\n\n', fontSize: 10 }, // Spacer
-                        
-                        // Nama & NPA
-                        { text: 'ABDY EKA PRASETIA, S.Pd', alignment: 'center', bold: true, decoration: 'underline', fontSize: 11 },
-                        { text: 'NPA. 00002', alignment: 'center', bold: true, fontSize: 11 },
-
-                        // TTD Sekretaris (Overlay naik menimpa Nama)
-                        { image: ttdSekretaris, width: 110, alignment: 'center', margin: [0, -75, 0, 0] }
-                     ],
-                     alignment: 'center'
-                  }
-                ]
-              ] 
-            }, 
-            layout: {
-                defaultBorder: false,
-                paddingLeft: function(i) { return 0; }, paddingRight: function(i) { return 0; },
-                paddingTop: function(i) { return 0; }, paddingBottom: function(i) { return 0; },
-            } 
-          }
+          { stack: [ { text: isFormal ? titiMangsa : '', margin: [0, 0, 0, 2] }, { text: 'PENGURUS PGRI RANTING KALIJAGA', bold: true } ], alignment: 'center', margin: [0, 15, 0, 15] },
+          { table: { widths: ['*', '*'], body: [ [{ text: 'Ketua', alignment: 'center', bold: false }, { text: 'Sekretaris', alignment: 'center', bold: true }], [{ text: '\n\n\n\n( DENDI SUPARMAN, S.Pd.SD )', alignment: 'center', bold: true, decoration: 'underline' }, { text: '\n\n\n\n( ABDY EKA PRASETIA, S.Pd )', alignment: 'center', bold: true, decoration: 'underline' }], [{ text: 'NPA. 00001', alignment: 'center', bold: true }, { text: 'NPA. 00002', alignment: 'center', bold: true }] ] }, layout: 'noBorders' }
         ]
       };
 
+      // 3. Langsung Buka PDF di Browser (Tanpa Upload)
       pdfMakeInstance.createPdf(docDefinition).open();
+      
+      // 4. Update Tampilan
       fetchData();
       setActiveTab('out');
 
-    } catch (e: any) { alert("Gagal mencetak: " + e.message); } finally { setUploading(false); }
+    } catch (e: any) { 
+      alert("Gagal mencetak: " + e.message); 
+    } finally {
+      setUploading(false);
+    }
   };
 
   return (
     <div className="space-y-6 animate-in fade-in">
-      <input type="file" ref={fileInputRef} onChange={handleArchiveFileChange} className="hidden" accept="application/pdf,image/*" />
+      {/* Hidden File Input untuk Upload Arsip */}
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        onChange={handleArchiveFileChange} 
+        className="hidden" 
+        accept="application/pdf,image/*" 
+      />
 
       {!isPreviewing && (
         <div className="flex flex-col md:flex-row justify-between items-end gap-4 bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm">
@@ -477,12 +453,12 @@ const Letters = () => {
               <button onClick={() => setIsPreviewing(false)} className="bg-slate-700 px-4 py-2 rounded-lg font-bold text-sm flex gap-2 hover:bg-slate-600"><ArrowLeft size={16}/> Kembali Edit</button>
               {/* TOMBOL CETAK LANGSUNG */}
               <button onClick={handleDirectPrint} disabled={uploading} className="bg-blue-600 px-6 py-2 rounded-lg font-bold text-sm flex gap-2 hover:bg-blue-700 shadow-lg shadow-blue-500/30">
-                 {uploading ? <><Loader2 className="animate-spin"/> Memproses...</> : <><Printer size={16}/> Cetak PDF Digital (Auto TTD)</>}
+                 {uploading ? <><Loader2 className="animate-spin"/> Memproses...</> : <><Printer size={16}/> Cetak PDF (Langsung)</>}
               </button>
            </div>
            <div className="flex justify-center p-8 bg-gray-900">
               <div className="bg-white w-[215mm] min-h-[330mm] shadow-2xl p-[2.54cm] text-black font-serif relative">
-                 {/* VISUAL PREVIEW HTML (SCREEN ONLY) */}
+                 {/* VISUAL PREVIEW HTML (SCREEN ONLY - BELUM TTD) */}
                  <div className="border-b-4 border-black pb-4 mb-6 flex items-center gap-6">
                     <img src={LOGO_URL} className="w-24 h-auto flex-shrink-0" crossOrigin="anonymous" alt="Logo"/>
                     <div className="flex-1 text-center leading-tight">
