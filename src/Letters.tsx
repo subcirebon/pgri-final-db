@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import { 
   Inbox, Send, Printer, Plus, Save, 
-  FileText, Eye, X, Loader2, ArrowLeft, History, Upload, CheckCircle
+  FileText, Eye, X, Loader2, ArrowLeft, History, Upload
 } from 'lucide-react';
 
 // --- CONFIG PDFMAKE ---
@@ -27,13 +27,12 @@ pdfMakeInstance.fonts = {
   } 
 };
 
-// --- HELPERS (DIPERBAIKI: ANTI MACET) ---
+// --- HELPER GAMBAR (Versi Cepat - Tanpa Error) ---
 const getBase64ImageFromURL = (url: string) => {
   return new Promise((resolve) => {
     const img = new Image(); 
     img.setAttribute("crossOrigin", "anonymous");
-    
-    // Fallback image (pixel transparan) jika gagal
+    // Gambar kosong transparan jika gagal load (supaya tidak error)
     const fallback = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
     img.onload = () => { 
@@ -42,35 +41,16 @@ const getBase64ImageFromURL = (url: string) => {
         canvas.width = img.width; 
         canvas.height = img.height; 
         const ctx = canvas.getContext("2d"); 
-        if (!ctx) throw new Error("Canvas context failed");
-        ctx.drawImage(img, 0, 0); 
-        const dataURL = canvas.toDataURL("image/png");
-        resolve(dataURL); 
-      } catch (e) {
-        console.warn("Gagal memproses gambar (CORS/Canvas), menggunakan fallback:", e);
-        resolve(fallback); // Tetap lanjut meski error
-      }
+        if(ctx) {
+            ctx.drawImage(img, 0, 0); 
+            resolve(canvas.toDataURL("image/png"));
+        } else {
+            resolve(fallback);
+        }
+      } catch (e) { resolve(fallback); }
     };
-    
-    img.onerror = () => { 
-      console.warn("Gagal memuat gambar dari URL, menggunakan fallback.");
-      resolve(fallback); // Tetap lanjut meski error
-    };
-    
+    img.onerror = () => resolve(fallback);
     img.src = url;
-  });
-};
-
-const getPdfBlob = (docDefinition: any) => {
-  return new Promise<Blob>((resolve, reject) => {
-    try {
-      const pdfDocGenerator = pdfMakeInstance.createPdf(docDefinition);
-      pdfDocGenerator.getBlob((blob: Blob) => {
-        resolve(blob);
-      });
-    } catch (e) {
-      reject(e);
-    }
   });
 };
 
@@ -176,17 +156,25 @@ const Letters = () => {
     } catch (err: any) { alert('Gagal menyimpan: ' + err.message); } finally { setUploading(false); }
   };
 
-  // --- HANDLE PRINT AND SAVE (ROBUST VERSION) ---
-  const handlePrintAndSave = async () => {
+  // --- CETAK LANGSUNG (Direct Print) ---
+  // Fitur: Langsung buka PDF, Catat data ke DB, TANPA Upload file (Anti Macet)
+  const handleDirectPrint = async () => {
     setUploading(true);
-    console.log("Memulai proses...");
-    
     try {
       const isFormal = selectedType.formType === 'formal';
-      // Step 1: Ambil Gambar (Sekarang aman dari hang)
-      const logoBase64 = await getBase64ImageFromURL(LOGO_URL); 
+      const logoBase64 = await getBase64ImageFromURL(LOGO_URL);
 
-      // Step 2: Buat Definisi PDF
+      // 1. Simpan Data Surat ke Database (Metadata saja)
+      // Ini penting agar nomor surat tercatat di sistem
+      await supabase.from('letters_out').insert([{ 
+        date_sent: new Date(), 
+        letter_number: fullLetterNumber, 
+        recipient: isFormal ? '-' : formData.tujuan, 
+        subject: selectedType.label + ' ' + formData.perihal,
+        file_url: null // Kita kosongkan karena tidak upload file
+      }]);
+
+      // 2. Buat Dokumen PDF
       const docDefinition: any = {
         pageSize: 'FOLIO',
         pageMargins: [72, 40, 72, 72],
@@ -222,50 +210,17 @@ const Letters = () => {
         ]
       };
 
-      // Step 3: Generate Binary PDF
-      console.log("Generating PDF...");
-      const pdfBlob = await getPdfBlob(docDefinition);
-
-      // Step 4: Upload ke Supabase
-      console.log("Mengunggah ke Supabase...");
-      const fileName = `outgoing/${Date.now()}_${selectedType.code}.pdf`;
-      const { error: uploadError } = await supabase.storage
-        .from('letters-archive')
-        .upload(fileName, pdfBlob, {
-          contentType: 'application/pdf',
-          upsert: false
-        });
-
-      if (uploadError) {
-        console.error("Upload error detail:", uploadError);
-        throw new Error(`Gagal upload: ${uploadError.message} (Cek apakah Bucket 'letters-archive' sudah Public?)`);
-      }
-
-      // Step 5: Dapatkan URL
-      const { data: urlData } = supabase.storage.from('letters-archive').getPublicUrl(fileName);
-      
-      // Step 6: Simpan ke DB
-      console.log("Menyimpan ke Database...");
-      const { error: dbError } = await supabase.from('letters_out').insert([{ 
-        date_sent: new Date(), 
-        letter_number: fullLetterNumber, 
-        recipient: isFormal ? '-' : formData.tujuan, 
-        subject: selectedType.label + ' ' + formData.perihal,
-        file_url: urlData.publicUrl 
-      }]);
-      
-      if (dbError) throw dbError;
-      
-      console.log("Sukses!");
-      fetchData();
+      // 3. Langsung Buka PDF di Browser (Tanpa Upload)
       pdfMakeInstance.createPdf(docDefinition).open();
-      setActiveTab('out'); 
+      
+      // 4. Update Tampilan
+      fetchData();
+      setActiveTab('out');
 
     } catch (e: any) { 
-      console.error("ERROR UTAMA:", e);
-      alert("Terjadi kesalahan:\n" + e.message + "\n\n(Silakan cek Console F12 untuk detailnya)"); 
+      alert("Gagal mencetak: " + e.message); 
     } finally {
-      setUploading(false); // Pastikan loading berhenti apapun yang terjadi
+      setUploading(false);
     }
   };
 
@@ -384,16 +339,14 @@ const Letters = () => {
                    <td className="p-4">{l.subject}</td>
                    <td className="p-4 text-center">
                       {l.file_url ? (
-                        <a 
-                          href={l.file_url} 
-                          target="_blank" 
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 text-green-700 bg-green-50 px-3 py-1.5 rounded-lg border border-green-100 hover:bg-green-100 transition-colors font-bold cursor-pointer"
-                        >
+                        <a href={l.file_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-green-700 bg-green-50 px-3 py-1.5 rounded-lg border border-green-100 hover:bg-green-100 transition-colors font-bold cursor-pointer">
                           <FileText size={10}/> Lihat Dokumen
                         </a>
                       ) : (
-                        <span className="text-gray-400 italic">File tidak tersedia</span>
+                        // Indikator bahwa file ini hanya data, tidak ada PDF arsip
+                        <span className="text-gray-400 italic text-[10px] cursor-not-allowed" title="Dokumen ini tidak diupload otomatis">
+                          Tercetak (Manual)
+                        </span>
                       )}
                    </td>
                  </tr>
@@ -440,9 +393,9 @@ const Letters = () => {
         <div className="fixed inset-0 bg-gray-900 z-50 overflow-y-auto animate-in slide-in-from-bottom">
            <div className="bg-slate-800 p-4 sticky top-0 z-50 shadow-lg flex justify-between items-center text-white border-b border-slate-700">
               <button onClick={() => setIsPreviewing(false)} className="bg-slate-700 px-4 py-2 rounded-lg font-bold text-sm flex gap-2 hover:bg-slate-600"><ArrowLeft size={16}/> Kembali Edit</button>
-              {/* TOMBOL CETAK & SIMPAN */}
-              <button onClick={handlePrintAndSave} disabled={uploading} className="bg-blue-600 px-6 py-2 rounded-lg font-bold text-sm flex gap-2 hover:bg-blue-700 shadow-lg shadow-blue-500/30">
-                 {uploading ? <><Loader2 className="animate-spin"/> Mengunggah & Mencetak...</> : <><Printer size={16}/> Cetak & Simpan Surat</>}
+              {/* TOMBOL CETAK LANGSUNG */}
+              <button onClick={handleDirectPrint} disabled={uploading} className="bg-blue-600 px-6 py-2 rounded-lg font-bold text-sm flex gap-2 hover:bg-blue-700 shadow-lg shadow-blue-500/30">
+                 {uploading ? <><Loader2 className="animate-spin"/> Memproses...</> : <><Printer size={16}/> Cetak PDF (Langsung)</>}
               </button>
            </div>
            <div className="flex justify-center p-8 bg-gray-900">
