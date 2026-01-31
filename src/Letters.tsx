@@ -8,29 +8,53 @@ import {
 // --- CONFIG PDFMAKE ---
 import * as pdfMake from "pdfmake/build/pdfmake";
 import * as pdfFonts from "pdfmake/build/vfs_fonts";
+
 // @ts-ignore
 const pdfMakeInstance = pdfMake.default ? pdfMake.default : pdfMake;
 // @ts-ignore
 const pdfFontsInstance = pdfFonts.default ? pdfFonts.default : pdfFonts;
-if (pdfFontsInstance?.pdfMake?.vfs) { pdfMakeInstance.vfs = pdfFontsInstance.pdfMake.vfs; }
-pdfMakeInstance.fonts = { Times: { normal: 'Roboto-Regular.ttf', bold: 'Roboto-Medium.ttf', italics: 'Roboto-Italic.ttf', bolditalics: 'Roboto-MediumItalic.ttf' } };
 
-// Helper: Convert Image URL to Base64
+if (pdfFontsInstance?.pdfMake?.vfs) { 
+  pdfMakeInstance.vfs = pdfFontsInstance.pdfMake.vfs; 
+}
+
+pdfMakeInstance.fonts = { 
+  Times: { 
+    normal: 'Roboto-Regular.ttf', 
+    bold: 'Roboto-Medium.ttf', 
+    italics: 'Roboto-Italic.ttf', 
+    bolditalics: 'Roboto-MediumItalic.ttf' 
+  } 
+};
+
+// --- HELPERS ---
 const getBase64ImageFromURL = (url: string) => {
   return new Promise((resolve, reject) => {
-    const img = new Image(); img.setAttribute("crossOrigin", "anonymous");
-    img.onload = () => { const canvas = document.createElement("canvas"); canvas.width = img.width; canvas.height = img.height; const ctx = canvas.getContext("2d"); ctx?.drawImage(img, 0, 0); resolve(canvas.toDataURL("image/png")); };
-    img.onerror = error => reject(error); img.src = url;
+    const img = new Image(); 
+    img.setAttribute("crossOrigin", "anonymous");
+    img.onload = () => { 
+      const canvas = document.createElement("canvas"); 
+      canvas.width = img.width; 
+      canvas.height = img.height; 
+      const ctx = canvas.getContext("2d"); 
+      ctx?.drawImage(img, 0, 0); 
+      resolve(canvas.toDataURL("image/png")); 
+    };
+    img.onerror = error => reject(error); 
+    img.src = url;
   });
 };
 
-// Helper: Get PDF Blob from pdfMake (Promisified)
 const getPdfBlob = (docDefinition: any) => {
-  return new Promise<Blob>((resolve) => {
-    const pdfDocGenerator = pdfMakeInstance.createPdf(docDefinition);
-    pdfDocGenerator.getBlob((blob: Blob) => {
-      resolve(blob);
-    });
+  return new Promise<Blob>((resolve, reject) => {
+    try {
+      const pdfDocGenerator = pdfMakeInstance.createPdf(docDefinition);
+      pdfDocGenerator.getBlob((blob: Blob) => {
+        resolve(blob);
+      });
+    } catch (e) {
+      reject(e);
+    }
   });
 };
 
@@ -99,7 +123,6 @@ const Letters = () => {
 
   const fetchData = async () => {
     const { data: dataIn } = await supabase.from('letters_in').select('*').order('date_received', { ascending: false });
-    // Pastikan select mengambil file_url
     const { data: dataOut } = await supabase.from('letters_out').select('*').order('created_at', { ascending: false });
     setLettersIn(dataIn || []);
     setLettersOut(dataOut || []);
@@ -137,7 +160,7 @@ const Letters = () => {
     } catch (err: any) { alert('Gagal menyimpan: ' + err.message); } finally { setUploading(false); }
   };
 
-  // --- CETAK SURAT & AUTO UPLOAD & SAVE KE DATABASE ---
+  // --- HANDLE PRINT AND SAVE (FIXED) ---
   const handlePrintAndSave = async () => {
     setUploading(true);
     try {
@@ -150,7 +173,7 @@ const Letters = () => {
         pageMargins: [72, 40, 72, 72],
         defaultStyle: { font: 'Times', fontSize: 12 },
         content: [
-          // KOP SURAT 2 KOLOM
+          // KOP SURAT
           {
             columns: [
               { image: logoBase64, width: 90, margin: [0, 0, 10, 0] },
@@ -168,54 +191,54 @@ const Letters = () => {
             ],
             margin: [0, 0, 0, 5]
           },
-          // Garis
           { stack: [ { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 470, y2: 0, lineWidth: 2.5 }] }, { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 470, y2: 0, lineWidth: 1 }], margin: [0, 2, 0, 0] } ], margin: [0, 2, 0, 20] },
           
-          // Isi
           isFormal ? [ { text: selectedType.label.toUpperCase(), alignment: 'center', bold: true, decoration: 'underline', fontSize: 14 }, { text: `Nomor : ${fullLetterNumber}`, alignment: 'center', margin: [0, 0, 0, 20] } ] : [ { columns: [ { width: '*', table: { widths: [60, 10, '*'], body: [ ['Nomor', ':', fullLetterNumber], ['Lampiran', ':', formData.lampiran], ['Perihal', ':', selectedType.label + ' ' + formData.perihal] ] }, layout: 'noBorders' }, { width: 'auto', text: titiMangsa, alignment: 'right' } ], margin: [0, 0, 0, 20] }, { text: 'Kepada', margin: [0, 0, 0, 0] }, { text: formData.tujuan, margin: [0, 0, 0, 20], bold: true } ],
           { text: formData.pembuka, alignment: 'justify' },
           selectedType.formType === 'invitation' ? { margin: [30, 10, 0, 10], table: { widths: [80, 10, '*'], body: [ ['Hari', ':', formData.hari], ['Tanggal', ':', formData.tanggal_acara], ['Waktu', ':', formData.waktu], ['Tempat', ':', formData.tempat], ] }, layout: 'noBorders' } : { text: formData.isi_utama, alignment: 'justify', margin: [0, 10, 0, 10] },
           { text: formData.penutup, alignment: 'justify', margin: [0, 0, 0, 10] },
           
-          // TTD
           { stack: [ { text: isFormal ? titiMangsa : '', margin: [0, 0, 0, 2] }, { text: 'PENGURUS PGRI RANTING KALIJAGA', bold: true } ], alignment: 'center', margin: [0, 15, 0, 15] },
           { table: { widths: ['*', '*'], body: [ [{ text: 'Ketua', alignment: 'center', bold: false }, { text: 'Sekretaris', alignment: 'center', bold: true }], [{ text: '\n\n\n\n( DENDI SUPARMAN, S.Pd.SD )', alignment: 'center', bold: true, decoration: 'underline' }, { text: '\n\n\n\n( ABDY EKA PRASETIA, S.Pd )', alignment: 'center', bold: true, decoration: 'underline' }], [{ text: 'NPA. 00001', alignment: 'center', bold: true }, { text: 'NPA. 00002', alignment: 'center', bold: true }] ] }, layout: 'noBorders' }
         ]
       };
 
-      // 2. Generate BLOB (Binary) dari PDF
+      // 2. Generate PDF Blob
       const pdfBlob = await getPdfBlob(docDefinition);
 
-      // 3. Upload Blob ke Supabase Storage
+      // 3. Upload to Supabase Storage
       const fileName = `outgoing/${Date.now()}_${selectedType.code}.pdf`;
-      const { error: uploadError } = await supabase.storage.from('letters-archive').upload(fileName, pdfBlob, {
-        contentType: 'application/pdf',
-        upsert: false
-      });
+      const { error: uploadError } = await supabase.storage
+        .from('letters-archive')
+        .upload(fileName, pdfBlob, {
+          contentType: 'application/pdf',
+          upsert: false
+        });
 
-      if (uploadError) throw uploadError;
+      if (uploadError) throw new Error("Gagal upload file: " + uploadError.message);
 
-      // 4. Dapatkan URL Publik
+      // 4. Get Public URL
       const { data: urlData } = supabase.storage.from('letters-archive').getPublicUrl(fileName);
       const publicUrl = urlData.publicUrl;
 
-      // 5. Simpan Data + URL ke Database
-      await supabase.from('letters_out').insert([{ 
+      // 5. Save to Database
+      const { error: dbError } = await supabase.from('letters_out').insert([{ 
         date_sent: new Date(), 
         letter_number: fullLetterNumber, 
         recipient: isFormal ? '-' : formData.tujuan, 
         subject: selectedType.label + ' ' + formData.perihal,
-        file_url: publicUrl // Menyimpan link file
+        file_url: publicUrl 
       }]);
       
-      // 6. Refresh Data & Buka PDF untuk Print
+      if (dbError) throw dbError;
+      
+      // 6. Finish
       fetchData();
       pdfMakeInstance.createPdf(docDefinition).open();
-      
       setActiveTab('out'); 
 
     } catch (e: any) { 
-      alert("Gagal memproses surat: " + e.message); 
+      alert("Terjadi kesalahan: " + e.message + "\n\nPastikan Bucket 'letters-archive' sudah dibuat di Supabase Storage."); 
     } finally {
       setUploading(false);
     }
@@ -313,7 +336,7 @@ const Letters = () => {
         </div>
       )}
 
-      {/* --- TAB SURAT KELUAR (UPDATED: Link ke File) --- */}
+      {/* --- TAB SURAT KELUAR --- */}
       {activeTab === 'out' && (
         <div className="bg-white rounded-[32px] border border-gray-100 p-6 shadow-sm">
            <h3 className="font-bold text-gray-800 uppercase flex items-center gap-2 mb-4 text-sm"><Send/> Arsip Keluar</h3>
@@ -335,7 +358,6 @@ const Letters = () => {
                    <td className="p-4 font-mono">{l.letter_number}</td>
                    <td className="p-4">{l.subject}</td>
                    <td className="p-4 text-center">
-                      {/* LOGIKA TOMBOL LIHAT FILE */}
                       {l.file_url ? (
                         <a 
                           href={l.file_url} 
@@ -400,7 +422,7 @@ const Letters = () => {
            </div>
            <div className="flex justify-center p-8 bg-gray-900">
               <div className="bg-white w-[215mm] min-h-[330mm] shadow-2xl p-[2.54cm] text-black font-serif relative">
-                 {/* VISUAL PREVIEW HTML */}
+                 {/* VISUAL PREVIEW HTML (SCREEN ONLY) */}
                  <div className="border-b-4 border-black pb-4 mb-6 flex items-center gap-6">
                     <img src={LOGO_URL} className="w-24 h-auto flex-shrink-0" crossOrigin="anonymous" alt="Logo"/>
                     <div className="flex-1 text-center leading-tight">
