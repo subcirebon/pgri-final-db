@@ -27,10 +27,8 @@ pdfMakeInstance.fonts = {
   } 
 };
 
-// --- DATA GAMBAR (SUDAH DIUPDATE) ---
+// --- DATA GAMBAR ---
 const LOGO_URL = "https://upload.wikimedia.org/wikipedia/commons/2/2a/Persatuan_Guru_Republik_Indonesia.png";
-
-// Link Tanda Tangan & Stempel dari Supabase Anda
 const URL_TTD_KETUA = "https://vuzwlgwzhiuosgeohhjl.supabase.co/storage/v1/object/public/letters-archive/ttd-ketua.png";
 const URL_TTD_SEKRETARIS = "https://vuzwlgwzhiuosgeohhjl.supabase.co/storage/v1/object/public/letters-archive/ttd-sekretaris.png";
 const URL_STEMPEL = "https://vuzwlgwzhiuosgeohhjl.supabase.co/storage/v1/object/public/letters-archive/stempel.png";
@@ -39,7 +37,7 @@ const URL_STEMPEL = "https://vuzwlgwzhiuosgeohhjl.supabase.co/storage/v1/object/
 const getBase64ImageFromURL = (url: string) => {
   return new Promise((resolve) => {
     if (!url || url === "") {
-        resolve("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="); // Empty pixel
+        resolve("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=");
         return;
     }
     const img = new Image(); 
@@ -97,7 +95,6 @@ const Letters = () => {
   const [lastLetter, setLastLetter] = useState<string>('Memuat...');
   const [uploading, setUploading] = useState(false);
   
-  // State untuk Upload Arsip Keluar
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeUploadId, setActiveUploadId] = useState<string | null>(null);
@@ -141,7 +138,7 @@ const Letters = () => {
 
   useEffect(() => { fetchData(); }, []);
 
-  // --- TRIGGER UPLOAD FILE SURAT KELUAR ---
+  // --- UPLOAD ARSIP ---
   const triggerUploadArchive = (id: string) => {
     setActiveUploadId(id);
     if (fileInputRef.current) fileInputRef.current.click();
@@ -158,7 +155,7 @@ const Letters = () => {
       const { error: uploadError } = await supabase.storage.from('letters-archive').upload(fileName, file);
       if (uploadError) throw uploadError;
       const { data } = supabase.storage.from('letters-archive').getPublicUrl(fileName);
-      const { error: dbError } = await supabase.from('letters_out').update({ file_url: urlData.publicUrl }).eq('id', activeUploadId);
+      const { error: dbError } = await supabase.from('letters_out').update({ file_url: data.publicUrl }).eq('id', activeUploadId);
       if (dbError) throw dbError;
 
       alert("Arsip berhasil diupload!");
@@ -195,13 +192,11 @@ const Letters = () => {
     } catch (err: any) { alert('Gagal menyimpan: ' + err.message); } finally { setUploading(false); }
   };
 
-  // --- CETAK LANGSUNG (Direct Print) + TTD & STEMPEL ---
+  // --- CETAK LANGSUNG (Direct Print) ---
   const handleDirectPrint = async () => {
     setUploading(true);
     try {
       const isFormal = selectedType.formType === 'formal';
-      
-      // Load Semua Gambar Sekaligus
       const [logoBase64, ttdKetua, ttdSekretaris, stempel] = await Promise.all([
         getBase64ImageFromURL(LOGO_URL),
         getBase64ImageFromURL(URL_TTD_KETUA),
@@ -209,7 +204,6 @@ const Letters = () => {
         getBase64ImageFromURL(URL_STEMPEL)
       ]);
 
-      // Simpan Metadata
       await supabase.from('letters_out').insert([{ 
         date_sent: new Date(), 
         letter_number: fullLetterNumber, 
@@ -218,7 +212,6 @@ const Letters = () => {
         file_url: null 
       }]);
 
-      // Definisi PDF
       const docDefinition: any = {
         pageSize: 'FOLIO',
         pageMargins: [72, 40, 72, 72],
@@ -244,44 +237,45 @@ const Letters = () => {
           },
           { stack: [ { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 470, y2: 0, lineWidth: 2.5 }] }, { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 470, y2: 0, lineWidth: 1 }], margin: [0, 2, 0, 0] } ], margin: [0, 2, 0, 20] },
           
-          // ISI SURAT
           isFormal ? [ { text: selectedType.label.toUpperCase(), alignment: 'center', bold: true, decoration: 'underline', fontSize: 14 }, { text: `Nomor : ${fullLetterNumber}`, alignment: 'center', margin: [0, 0, 0, 20] } ] : [ { columns: [ { width: '*', table: { widths: [60, 10, '*'], body: [ ['Nomor', ':', fullLetterNumber], ['Lampiran', ':', formData.lampiran], ['Perihal', ':', selectedType.label + ' ' + formData.perihal] ] }, layout: 'noBorders' }, { width: 'auto', text: titiMangsa, alignment: 'right' } ], margin: [0, 0, 0, 20] }, { text: 'Kepada', margin: [0, 0, 0, 0] }, { text: formData.tujuan, margin: [0, 0, 0, 20], bold: true } ],
           { text: formData.pembuka, alignment: 'justify' },
           selectedType.formType === 'invitation' ? { margin: [30, 10, 0, 10], table: { widths: [80, 10, '*'], body: [ ['Hari', ':', formData.hari], ['Tanggal', ':', formData.tanggal_acara], ['Waktu', ':', formData.waktu], ['Tempat', ':', formData.tempat], ] }, layout: 'noBorders' } : { text: formData.isi_utama, alignment: 'justify', margin: [0, 10, 0, 10] },
           { text: formData.penutup, alignment: 'justify', margin: [0, 0, 0, 10] },
           
-          // TANDA TANGAN (DIGITAL) - 3 KOLOM
-          { stack: [ { text: isFormal ? titiMangsa : '', margin: [0, 0, 0, 2] }, { text: 'PENGURUS PGRI RANTING KALIJAGA', bold: true } ], alignment: 'center', margin: [0, 15, 0, 15] },
+          // --- LAYOUT TANDA TANGAN (OVERLAY) ---
+          { stack: [ { text: isFormal ? titiMangsa : '', margin: [0, 0, 0, 2] }, { text: 'PENGURUS PGRI RANTING KALIJAGA', bold: true } ], alignment: 'center', margin: [0, 15, 0, 5] },
           { 
             table: { 
-              widths: ['*', 'auto', '*'], // Kiri (Ketua), Tengah (Stempel), Kanan (Sekretaris)
+              widths: ['35%', '30%', '35%'], // Kolom Stempel (Tengah) diberi ruang
               body: [ 
                 [
-                  // KOLOM 1: KETUA
+                  // KETUA
                   { 
                      stack: [
-                        { text: 'Ketua', alignment: 'center', bold: false },
-                        { image: ttdKetua, width: 70, alignment: 'center', margin: [0, 5, 0, 0] },
-                        { text: '\n( DENDI SUPARMAN, S.Pd.SD )', alignment: 'center', bold: true, decoration: 'underline' },
-                        { text: 'NPA. 00001', alignment: 'center', bold: true }
+                        { text: 'Ketua', alignment: 'center', bold: false, margin: [0, 0, 0, 50] }, // Spacer untuk tempat TTD
+                        { text: '( DENDI SUPARMAN, S.Pd.SD )', alignment: 'center', bold: true, decoration: 'underline' },
+                        { text: 'NPA. 00001', alignment: 'center', bold: true },
+                        // GAMBAR TTD (Overlay dengan Margin Negatif ke Atas)
+                        { image: ttdKetua, width: 100, alignment: 'center', margin: [0, -70, 0, 0] } 
                      ],
                      alignment: 'center'
                   },
-                  // KOLOM 2: STEMPEL (DI TENGAH)
-                  { 
-                     image: stempel, 
-                     width: 75, 
-                     alignment: 'center', 
-                     margin: [-10, 25, -10, 0], // Margin negatif agar sedikit mendekat ke ketua/sekre
-                     opacity: 0.9 
-                  },
-                  // KOLOM 3: SEKRETARIS
+                  // STEMPEL (TENGAH)
                   { 
                      stack: [
-                        { text: 'Sekretaris', alignment: 'center', bold: true },
-                        { image: ttdSekretaris, width: 70, alignment: 'center', margin: [0, 5, 0, 0] },
-                        { text: '\n( ABDY EKA PRASETIA, S.Pd )', alignment: 'center', bold: true, decoration: 'underline' },
-                        { text: 'NPA. 00002', alignment: 'center', bold: true }
+                        { text: '', margin: [0, 0, 0, 30] }, // Spacer Vertikal
+                        { image: stempel, width: 90, alignment: 'center', opacity: 0.9 }
+                     ],
+                     alignment: 'center'
+                  },
+                  // SEKRETARIS
+                  { 
+                     stack: [
+                        { text: 'Sekretaris', alignment: 'center', bold: true, margin: [0, 0, 0, 50] }, // Spacer
+                        { text: '( ABDY EKA PRASETIA, S.Pd )', alignment: 'center', bold: true, decoration: 'underline' },
+                        { text: 'NPA. 00002', alignment: 'center', bold: true },
+                         // GAMBAR TTD (Overlay dengan Margin Negatif ke Atas)
+                        { image: ttdSekretaris, width: 100, alignment: 'center', margin: [0, -70, 0, 0] }
                      ],
                      alignment: 'center'
                   }
