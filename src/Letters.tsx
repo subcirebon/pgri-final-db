@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import { 
   Inbox, Send, Printer, Plus, Save, 
-  FileText, Eye, X, Loader2, ArrowLeft, History, Upload, ExternalLink
+  FileText, Eye, X, Loader2, ArrowLeft, History, Upload, CheckCircle
 } from 'lucide-react';
 
 // --- CONFIG PDFMAKE ---
@@ -27,20 +27,36 @@ pdfMakeInstance.fonts = {
   } 
 };
 
-// --- HELPERS ---
+// --- HELPERS (DIPERBAIKI: ANTI MACET) ---
 const getBase64ImageFromURL = (url: string) => {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const img = new Image(); 
     img.setAttribute("crossOrigin", "anonymous");
+    
+    // Fallback image (pixel transparan) jika gagal
+    const fallback = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+
     img.onload = () => { 
-      const canvas = document.createElement("canvas"); 
-      canvas.width = img.width; 
-      canvas.height = img.height; 
-      const ctx = canvas.getContext("2d"); 
-      ctx?.drawImage(img, 0, 0); 
-      resolve(canvas.toDataURL("image/png")); 
+      try {
+        const canvas = document.createElement("canvas"); 
+        canvas.width = img.width; 
+        canvas.height = img.height; 
+        const ctx = canvas.getContext("2d"); 
+        if (!ctx) throw new Error("Canvas context failed");
+        ctx.drawImage(img, 0, 0); 
+        const dataURL = canvas.toDataURL("image/png");
+        resolve(dataURL); 
+      } catch (e) {
+        console.warn("Gagal memproses gambar (CORS/Canvas), menggunakan fallback:", e);
+        resolve(fallback); // Tetap lanjut meski error
+      }
     };
-    img.onerror = error => reject(error); 
+    
+    img.onerror = () => { 
+      console.warn("Gagal memuat gambar dari URL, menggunakan fallback.");
+      resolve(fallback); // Tetap lanjut meski error
+    };
+    
     img.src = url;
   });
 };
@@ -160,14 +176,17 @@ const Letters = () => {
     } catch (err: any) { alert('Gagal menyimpan: ' + err.message); } finally { setUploading(false); }
   };
 
-  // --- HANDLE PRINT AND SAVE (FIXED) ---
+  // --- HANDLE PRINT AND SAVE (ROBUST VERSION) ---
   const handlePrintAndSave = async () => {
     setUploading(true);
+    console.log("Memulai proses...");
+    
     try {
       const isFormal = selectedType.formType === 'formal';
-      const logoBase64 = await getBase64ImageFromURL(LOGO_URL);
+      // Step 1: Ambil Gambar (Sekarang aman dari hang)
+      const logoBase64 = await getBase64ImageFromURL(LOGO_URL); 
 
-      // 1. Definisikan Dokumen PDF
+      // Step 2: Buat Definisi PDF
       const docDefinition: any = {
         pageSize: 'FOLIO',
         pageMargins: [72, 40, 72, 72],
@@ -203,10 +222,12 @@ const Letters = () => {
         ]
       };
 
-      // 2. Generate PDF Blob
+      // Step 3: Generate Binary PDF
+      console.log("Generating PDF...");
       const pdfBlob = await getPdfBlob(docDefinition);
 
-      // 3. Upload to Supabase Storage
+      // Step 4: Upload ke Supabase
+      console.log("Mengunggah ke Supabase...");
       const fileName = `outgoing/${Date.now()}_${selectedType.code}.pdf`;
       const { error: uploadError } = await supabase.storage
         .from('letters-archive')
@@ -215,32 +236,36 @@ const Letters = () => {
           upsert: false
         });
 
-      if (uploadError) throw new Error("Gagal upload file: " + uploadError.message);
+      if (uploadError) {
+        console.error("Upload error detail:", uploadError);
+        throw new Error(`Gagal upload: ${uploadError.message} (Cek apakah Bucket 'letters-archive' sudah Public?)`);
+      }
 
-      // 4. Get Public URL
+      // Step 5: Dapatkan URL
       const { data: urlData } = supabase.storage.from('letters-archive').getPublicUrl(fileName);
-      const publicUrl = urlData.publicUrl;
-
-      // 5. Save to Database
+      
+      // Step 6: Simpan ke DB
+      console.log("Menyimpan ke Database...");
       const { error: dbError } = await supabase.from('letters_out').insert([{ 
         date_sent: new Date(), 
         letter_number: fullLetterNumber, 
         recipient: isFormal ? '-' : formData.tujuan, 
         subject: selectedType.label + ' ' + formData.perihal,
-        file_url: publicUrl 
+        file_url: urlData.publicUrl 
       }]);
       
       if (dbError) throw dbError;
       
-      // 6. Finish
+      console.log("Sukses!");
       fetchData();
       pdfMakeInstance.createPdf(docDefinition).open();
       setActiveTab('out'); 
 
     } catch (e: any) { 
-      alert("Terjadi kesalahan: " + e.message + "\n\nPastikan Bucket 'letters-archive' sudah dibuat di Supabase Storage."); 
+      console.error("ERROR UTAMA:", e);
+      alert("Terjadi kesalahan:\n" + e.message + "\n\n(Silakan cek Console F12 untuk detailnya)"); 
     } finally {
-      setUploading(false);
+      setUploading(false); // Pastikan loading berhenti apapun yang terjadi
     }
   };
 
