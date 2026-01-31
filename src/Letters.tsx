@@ -220,8 +220,8 @@ const Letters = () => {
           {
             columns: [
               // Kolom 1: Logo
-              { image: logoBase64, width: 90, margin: [0, 15, 0, 0] }, // Margin top agar turun ke tengah
-              // Kolom 2: Teks (Otomatis di tengah karena diapit 2 kolom lebar sama)
+              { image: logoBase64, width: 90, margin: [0, 15, 0, 0] }, 
+              // Kolom 2: Teks 
               {
                 width: '*',
                 stack: [
@@ -233,7 +233,7 @@ const Letters = () => {
                 ],
                 alignment: 'center'
               },
-              // Kolom 3: Kosong (Penyeimbang agar teks persis di tengah)
+              // Kolom 3: Kosong
               { text: '', width: 90 } 
             ],
             margin: [0, 0, 0, 5]
@@ -245,9 +245,10 @@ const Letters = () => {
           selectedType.formType === 'invitation' ? { margin: [30, 10, 0, 10], table: { widths: [80, 10, '*'], body: [ ['Hari', ':', formData.hari], ['Tanggal', ':', formData.tanggal_acara], ['Waktu', ':', formData.waktu], ['Tempat', ':', formData.tempat], ] }, layout: 'noBorders' } : { text: formData.isi_utama, alignment: 'justify', margin: [0, 10, 0, 10] },
           { text: formData.penutup, alignment: 'justify', margin: [0, 0, 0, 10] },
           
-          // --- LAYOUT TANDA TANGAN FINAL (31 Jan) ---
+          // --- LAYOUT TANDA TANGAN FINAL FIXED ---
           { stack: [ { text: isFormal ? titiMangsa : '', margin: [0, 0, 0, 2] }, { text: 'PENGURUS PGRI RANTING KALIJAGA', bold: true } ], alignment: 'center', margin: [0, 15, 0, 5] },
           { 
+            style: 'signatureTable',
             table: { 
               widths: ['50%', '50%'], 
               body: [ 
@@ -255,40 +256,40 @@ const Letters = () => {
                   // KETUA (Kiri)
                   { 
                      stack: [
-                        // Spacer diperbesar (60) agar nama turun "2x enter"
-                        { text: 'Ketua', alignment: 'center', bold: false, margin: [0, 0, 0, 60] }, 
-                        { text: '( DENDI SUPARMAN, S.Pd.SD )', alignment: 'center', bold: true, decoration: 'underline' },
-                        { text: 'NPA. 00001', alignment: 'center', bold: true },
-                        // Tanda Tangan (Naik -85 karena spacer makin tinggi)
-                        { image: ttdKetua, width: 110, alignment: 'center', margin: [0, -85, 0, 0] },
-                        // Stempel (Geser kanan 80, Naik -110 agar pas di tengah)
-                        { image: stempel, width: 90, alignment: 'center', margin: [80, -110, 0, 0], opacity: 0.9 }
+                        { text: 'Ketua', alignment: 'center', bold: false },
+                        { text: '\n\n\n', fontSize: 12 }, // SPASI MANUAL 3x ENTER
+                        
+                        // Tanda Tangan (Ketua) - Overlay
+                        { image: ttdKetua, width: 110, alignment: 'center', margin: [0, -60, 0, 0] },
+                        
+                        // Stempel (Geser Kanan 130 agar di tengah, Naik -100 agar pas)
+                        { image: stempel, width: 90, alignment: 'center', margin: [130, -90, 0, 0], opacity: 0.9 },
+
+                        // Nama Terang (Tanpa Kurung, Font 10 agar 1 baris)
+                        { text: 'DENDI SUPARMAN, S.Pd.SD', alignment: 'center', bold: true, decoration: 'underline', fontSize: 10, margin: [0, 5, 0, 0] },
+                        { text: 'NPA. 00001', alignment: 'center', bold: true, fontSize: 10 }
                      ],
                      alignment: 'center'
                   },
                   // SEKRETARIS (Kanan)
                   { 
                      stack: [
-                        // Spacer diperbesar (60)
-                        { text: 'Sekretaris', alignment: 'center', bold: true, margin: [0, 0, 0, 60] },
-                        { text: '( ABDY EKA PRASETIA, S.Pd )', alignment: 'center', bold: true, decoration: 'underline' },
-                        { text: 'NPA. 00002', alignment: 'center', bold: true },
-                        // Tanda Tangan (Naik -85)
-                        { image: ttdSekretaris, width: 110, alignment: 'center', margin: [0, -85, 0, 0] }
+                        { text: 'Sekretaris', alignment: 'center', bold: true },
+                        { text: '\n\n\n', fontSize: 12 }, // SPASI MANUAL
+                        
+                        // Tanda Tangan (Sekretaris) - Overlay
+                        { image: ttdSekretaris, width: 110, alignment: 'center', margin: [0, -60, 0, 0] },
+
+                        // Nama Terang
+                        { text: 'ABDY EKA PRASETIA, S.Pd', alignment: 'center', bold: true, decoration: 'underline', fontSize: 10, margin: [0, 5, 0, 0] },
+                        { text: 'NPA. 00002', alignment: 'center', bold: true, fontSize: 10 }
                      ],
                      alignment: 'center'
                   }
                 ] 
               ] 
             }, 
-            // Layout padding 0 mencegah nama panjang terpotong (wrap)
-            layout: {
-                defaultBorder: false,
-                paddingLeft: function(i) { return 0; },
-                paddingRight: function(i) { return 0; },
-                paddingTop: function(i) { return 0; },
-                paddingBottom: function(i) { return 0; },
-            } 
+            layout: 'noBorders' 
           }
         ]
       };
@@ -481,7 +482,7 @@ const Letters = () => {
            </div>
            <div className="flex justify-center p-8 bg-gray-900">
               <div className="bg-white w-[215mm] min-h-[330mm] shadow-2xl p-[2.54cm] text-black font-serif relative">
-                 {/* VISUAL PREVIEW HTML (SCREEN ONLY - BELUM TTD) */}
+                 {/* VISUAL PREVIEW HTML (SCREEN ONLY) */}
                  <div className="border-b-4 border-black pb-4 mb-6 flex items-center gap-6">
                     <img src={LOGO_URL} className="w-24 h-auto flex-shrink-0" crossOrigin="anonymous" alt="Logo"/>
                     <div className="flex-1 text-center leading-tight">
