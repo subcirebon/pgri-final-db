@@ -30,8 +30,8 @@ pdfMakeInstance.fonts = {
 // --- DATA GAMBAR ---
 const LOGO_URL = "https://upload.wikimedia.org/wikipedia/commons/2/2a/Persatuan_Guru_Republik_Indonesia.png";
 
-// Link Gambar TTD Gabungan (Ketua + Stempel + Sekretaris)
-const URL_TTD_FULL = "https://vuzwlgwzhiuosgeohhjl.supabase.co/storage/v1/object/public/letters-archive/PENGURUS%20PGRI%20RANTING%20KALIJAGA%20(24.8%20x%2010.5%20cm).png";
+// Link Gambar Full Scan Tanda Tangan (Berisi: Jabatan, TTD, Stempel, Nama, NPA)
+const URL_TTD_FULL = "https://vuzwlgwzhiuosgeohhjl.supabase.co/storage/v1/object/public/letters-archive/ttd-surat.png";
 
 // --- HELPER GAMBAR ---
 const getBase64ImageFromURL = (url: string) => {
@@ -214,7 +214,7 @@ const Letters = () => {
         pageMargins: [72, 40, 72, 72],
         defaultStyle: { font: 'Times', fontSize: 12 },
         content: [
-          // KOP SURAT
+          // KOP SURAT (Standar Kiri)
           {
             columns: [
               { image: logoBase64, width: 90, margin: [0, 0, 10, 0] },
@@ -239,54 +239,15 @@ const Letters = () => {
           selectedType.formType === 'invitation' ? { margin: [30, 10, 0, 10], table: { widths: [80, 10, '*'], body: [ ['Hari', ':', formData.hari], ['Tanggal', ':', formData.tanggal_acara], ['Waktu', ':', formData.waktu], ['Tempat', ':', formData.tempat], ] }, layout: 'noBorders' } : { text: formData.isi_utama, alignment: 'justify', margin: [0, 10, 0, 10] },
           { text: formData.penutup, alignment: 'justify', margin: [0, 0, 0, 10] },
           
-          // --- LAYOUT TANDA TANGAN (TEXT DIKETIK, GAMBAR DI-OVERLAY) ---
-          { stack: [ { text: isFormal ? titiMangsa : '', margin: [0, 0, 0, 2] }, { text: 'PENGURUS PGRI RANTING KALIJAGA', bold: true } ], alignment: 'center', margin: [0, 15, 0, 5] },
-          
-          // STRUKTUR STACK:
-          // 1. Teks Nama (Layer Paling Bawah) - Dibuat tabel agar sejajar
-          // 2. Gambar (Layer Atas) - Disisipkan dengan margin negatif agar berada di tengah-tengah
+          // --- BAGIAN TANDA TANGAN (HANYA GAMBAR) ---
+          { stack: [ { text: isFormal ? titiMangsa : '', margin: [0, 0, 0, 2] }, { text: 'PENGURUS PGRI RANTING KALIJAGA', bold: true } ], alignment: 'center', margin: [0, 15, 0, 10] },
           { 
-            stack: [
-              // LAYER 1: TABEL TEKS (Jabatan & Nama)
-              {
-                table: { 
-                  widths: ['50%', '50%'], 
-                  body: [ 
-                    // Baris 1: Jabatan
-                    [ 
-                      { text: 'Ketua', alignment: 'center', bold: false },
-                      { text: 'Sekretaris', alignment: 'center', bold: true }
-                    ],
-                    // Baris 2: Spacer (Jarak Kosong untuk Gambar) - 4x Enter
-                    [
-                      { text: '\n\n\n\n', fontSize: 10 },
-                      { text: '\n\n\n\n', fontSize: 10 }
-                    ],
-                    // Baris 3: Nama Terang
-                    [
-                      { text: 'DENDI SUPARMAN, S.Pd.SD', alignment: 'center', bold: true, decoration: 'underline', fontSize: 11 },
-                      { text: 'ABDY EKA PRASETIA, S.Pd', alignment: 'center', bold: true, decoration: 'underline', fontSize: 11 }
-                    ],
-                    // Baris 4: NPA
-                    [
-                      { text: 'NPA. 00001', alignment: 'center', bold: true, fontSize: 11 },
-                      { text: 'NPA. 00002', alignment: 'center', bold: true, fontSize: 11 }
-                    ]
-                  ] 
-                }, 
-                layout: 'noBorders' 
-              },
-              
-              // LAYER 2: GAMBAR SCAN (OVERLAY)
-              { 
-                image: fullTtdScan, 
-                width: 380, // Lebar disesuaikan agar proporsional menutupi 2 kolom
-                alignment: 'center', 
-                // Margin: [Kiri, Atas, Kanan, Bawah]
-                // Atas -100: Menarik gambar ke atas agar masuk ke area Spacer (Baris 2 tabel)
-                margin: [0, -100, 0, 0] 
-              }
-            ]
+            // Kita gunakan gambar scan utuh
+            // Width 480 agar full width sesuai margin surat (aman untuk F4)
+            image: fullTtdScan,
+            width: 480, 
+            alignment: 'center',
+            margin: [0, 0, 0, 0] 
           }
         ]
       };
@@ -474,7 +435,7 @@ const Letters = () => {
               <button onClick={() => setIsPreviewing(false)} className="bg-slate-700 px-4 py-2 rounded-lg font-bold text-sm flex gap-2 hover:bg-slate-600"><ArrowLeft size={16}/> Kembali Edit</button>
               {/* TOMBOL CETAK LANGSUNG */}
               <button onClick={handleDirectPrint} disabled={uploading} className="bg-blue-600 px-6 py-2 rounded-lg font-bold text-sm flex gap-2 hover:bg-blue-700 shadow-lg shadow-blue-500/30">
-                 {uploading ? <><Loader2 className="animate-spin"/> Memproses...</> : <><Printer size={16}/> Cetak PDF (Langsung)</>}
+                 {uploading ? <><Loader2 className="animate-spin"/> Memproses...</> : <><Printer size={16}/> Cetak PDF (Scan TTD)</>}
               </button>
            </div>
            <div className="flex justify-center p-8 bg-gray-900">
