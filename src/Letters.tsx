@@ -216,10 +216,12 @@ const Letters = () => {
         pageMargins: [72, 40, 72, 72],
         defaultStyle: { font: 'Times', fontSize: 12 },
         content: [
-          // KOP SURAT
+          // KOP SURAT (3 KOLOM UNTUK CENTERING SEMPURNA)
           {
             columns: [
-              { image: logoBase64, width: 90, margin: [0, 0, 10, 0] },
+              // Kolom 1: Logo
+              { image: logoBase64, width: 90, margin: [0, 15, 0, 0] }, // Margin top agar turun ke tengah
+              // Kolom 2: Teks (Otomatis di tengah karena diapit 2 kolom lebar sama)
               {
                 width: '*',
                 stack: [
@@ -230,7 +232,9 @@ const Letters = () => {
                   { text: 'Email: pgrikalijaga@gmail.com Website: pgrikalijaga.sekolahdasar.online', fontSize: 9 }
                 ],
                 alignment: 'center'
-              }
+              },
+              // Kolom 3: Kosong (Penyeimbang agar teks persis di tengah)
+              { text: '', width: 90 } 
             ],
             margin: [0, 0, 0, 5]
           },
@@ -241,7 +245,7 @@ const Letters = () => {
           selectedType.formType === 'invitation' ? { margin: [30, 10, 0, 10], table: { widths: [80, 10, '*'], body: [ ['Hari', ':', formData.hari], ['Tanggal', ':', formData.tanggal_acara], ['Waktu', ':', formData.waktu], ['Tempat', ':', formData.tempat], ] }, layout: 'noBorders' } : { text: formData.isi_utama, alignment: 'justify', margin: [0, 10, 0, 10] },
           { text: formData.penutup, alignment: 'justify', margin: [0, 0, 0, 10] },
           
-          // --- LAYOUT TANDA TANGAN (PERBAIKAN WRAPPING) ---
+          // --- LAYOUT TANDA TANGAN FINAL (31 Jan) ---
           { stack: [ { text: isFormal ? titiMangsa : '', margin: [0, 0, 0, 2] }, { text: 'PENGURUS PGRI RANTING KALIJAGA', bold: true } ], alignment: 'center', margin: [0, 15, 0, 5] },
           { 
             table: { 
@@ -251,31 +255,33 @@ const Letters = () => {
                   // KETUA (Kiri)
                   { 
                      stack: [
-                        { text: 'Ketua', alignment: 'center', bold: false, margin: [0, 0, 0, 40] }, // Jarak Text ke TTD
+                        // Spacer diperbesar (60) agar nama turun "2x enter"
+                        { text: 'Ketua', alignment: 'center', bold: false, margin: [0, 0, 0, 60] }, 
                         { text: '( DENDI SUPARMAN, S.Pd.SD )', alignment: 'center', bold: true, decoration: 'underline' },
                         { text: 'NPA. 00001', alignment: 'center', bold: true },
-                        // Tanda Tangan (Naik menimpa nama)
-                        { image: ttdKetua, width: 110, alignment: 'center', margin: [0, -70, 0, 0] },
-                        // Stempel (Geser kanan ke tengah, Naik menimpa TTD)
-                        { image: stempel, width: 90, alignment: 'center', margin: [80, -95, 0, 0], opacity: 0.9 }
+                        // Tanda Tangan (Naik -85 karena spacer makin tinggi)
+                        { image: ttdKetua, width: 110, alignment: 'center', margin: [0, -85, 0, 0] },
+                        // Stempel (Geser kanan 80, Naik -110 agar pas di tengah)
+                        { image: stempel, width: 90, alignment: 'center', margin: [80, -110, 0, 0], opacity: 0.9 }
                      ],
                      alignment: 'center'
                   },
                   // SEKRETARIS (Kanan)
                   { 
                      stack: [
-                        { text: 'Sekretaris', alignment: 'center', bold: true, margin: [0, 0, 0, 40] },
+                        // Spacer diperbesar (60)
+                        { text: 'Sekretaris', alignment: 'center', bold: true, margin: [0, 0, 0, 60] },
                         { text: '( ABDY EKA PRASETIA, S.Pd )', alignment: 'center', bold: true, decoration: 'underline' },
                         { text: 'NPA. 00002', alignment: 'center', bold: true },
-                        // Tanda Tangan (Naik menimpa nama)
-                        { image: ttdSekretaris, width: 110, alignment: 'center', margin: [0, -70, 0, 0] }
+                        // Tanda Tangan (Naik -85)
+                        { image: ttdSekretaris, width: 110, alignment: 'center', margin: [0, -85, 0, 0] }
                      ],
                      alignment: 'center'
                   }
                 ] 
               ] 
             }, 
-            // Layout khusus: padding 0 agar nama panjang tidak terpotong
+            // Layout padding 0 mencegah nama panjang terpotong (wrap)
             layout: {
                 defaultBorder: false,
                 paddingLeft: function(i) { return 0; },
