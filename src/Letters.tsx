@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './supabaseClient';
 import { 
   Inbox, Send, Printer, Plus, Save, 
-  FileText, Eye, X, Loader2, ArrowLeft, History, Upload, FileUp, Trash2
+  FileText, Eye, X, Loader2, ArrowLeft, History, Upload, FileUp
 } from 'lucide-react';
 
 // --- CONFIG PDFMAKE ---
@@ -27,9 +27,21 @@ pdfMakeInstance.fonts = {
   } 
 };
 
+// --- DATA GAMBAR (SUDAH DIUPDATE) ---
+const LOGO_URL = "https://upload.wikimedia.org/wikipedia/commons/2/2a/Persatuan_Guru_Republik_Indonesia.png";
+
+// Link Tanda Tangan & Stempel dari Supabase Anda
+const URL_TTD_KETUA = "https://vuzwlgwzhiuosgeohhjl.supabase.co/storage/v1/object/public/letters-archive/ttd-ketua.png";
+const URL_TTD_SEKRETARIS = "https://vuzwlgwzhiuosgeohhjl.supabase.co/storage/v1/object/public/letters-archive/ttd-sekretaris.png";
+const URL_STEMPEL = "https://vuzwlgwzhiuosgeohhjl.supabase.co/storage/v1/object/public/letters-archive/stempel.png";
+
 // --- HELPER GAMBAR ---
 const getBase64ImageFromURL = (url: string) => {
   return new Promise((resolve) => {
+    if (!url || url === "") {
+        resolve("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="); // Empty pixel
+        return;
+    }
     const img = new Image(); 
     img.setAttribute("crossOrigin", "anonymous");
     const fallback = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
@@ -52,8 +64,6 @@ const getBase64ImageFromURL = (url: string) => {
     img.src = url;
   });
 };
-
-const LOGO_URL = "https://upload.wikimedia.org/wikipedia/commons/2/2a/Persatuan_Guru_Republik_Indonesia.png";
 
 const LETTER_TYPES = [
   { label: 'Surat Undangan', code: 'Und', formType: 'invitation' },
@@ -134,9 +144,7 @@ const Letters = () => {
   // --- TRIGGER UPLOAD FILE SURAT KELUAR ---
   const triggerUploadArchive = (id: string) => {
     setActiveUploadId(id);
-    if (fileInputRef.current) {
-      fileInputRef.current.click();
-    }
+    if (fileInputRef.current) fileInputRef.current.click();
   };
 
   const handleArchiveFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -147,30 +155,15 @@ const Letters = () => {
     try {
       const fileExt = file.name.split('.').pop();
       const fileName = `outgoing/archive_${activeUploadId}_${Date.now()}.${fileExt}`;
-      
-      // Upload ke Storage
       const { error: uploadError } = await supabase.storage.from('letters-archive').upload(fileName, file);
       if (uploadError) throw uploadError;
-
-      // Dapatkan URL
-      const { data: urlData } = supabase.storage.from('letters-archive').getPublicUrl(fileName);
-
-      // Update Database
-      const { error: dbError } = await supabase.from('letters_out')
-        .update({ file_url: urlData.publicUrl })
-        .eq('id', activeUploadId);
-
+      const { data } = supabase.storage.from('letters-archive').getPublicUrl(fileName);
+      const { error: dbError } = await supabase.from('letters_out').update({ file_url: urlData.publicUrl }).eq('id', activeUploadId);
       if (dbError) throw dbError;
 
       alert("Arsip berhasil diupload!");
       fetchData();
-    } catch (err: any) {
-      alert("Gagal upload: " + err.message);
-    } finally {
-      setUploadingId(null);
-      setActiveUploadId(null);
-      if (fileInputRef.current) fileInputRef.current.value = ''; // Reset input
-    }
+    } catch (err: any) { alert("Gagal upload: " + err.message); } finally { setUploadingId(null); setActiveUploadId(null); if (fileInputRef.current) fileInputRef.current.value = ''; }
   };
 
   // --- SAVE SURAT MASUK ---
@@ -202,14 +195,21 @@ const Letters = () => {
     } catch (err: any) { alert('Gagal menyimpan: ' + err.message); } finally { setUploading(false); }
   };
 
-  // --- CETAK LANGSUNG (Direct Print) ---
+  // --- CETAK LANGSUNG (Direct Print) + TTD & STEMPEL ---
   const handleDirectPrint = async () => {
     setUploading(true);
     try {
       const isFormal = selectedType.formType === 'formal';
-      const logoBase64 = await getBase64ImageFromURL(LOGO_URL);
+      
+      // Load Semua Gambar Sekaligus
+      const [logoBase64, ttdKetua, ttdSekretaris, stempel] = await Promise.all([
+        getBase64ImageFromURL(LOGO_URL),
+        getBase64ImageFromURL(URL_TTD_KETUA),
+        getBase64ImageFromURL(URL_TTD_SEKRETARIS),
+        getBase64ImageFromURL(URL_STEMPEL)
+      ]);
 
-      // Simpan Metadata ke DB
+      // Simpan Metadata
       await supabase.from('letters_out').insert([{ 
         date_sent: new Date(), 
         letter_number: fullLetterNumber, 
@@ -218,7 +218,7 @@ const Letters = () => {
         file_url: null 
       }]);
 
-      // Buat PDF
+      // Definisi PDF
       const docDefinition: any = {
         pageSize: 'FOLIO',
         pageMargins: [72, 40, 72, 72],
@@ -244,13 +244,52 @@ const Letters = () => {
           },
           { stack: [ { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 470, y2: 0, lineWidth: 2.5 }] }, { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 470, y2: 0, lineWidth: 1 }], margin: [0, 2, 0, 0] } ], margin: [0, 2, 0, 20] },
           
+          // ISI SURAT
           isFormal ? [ { text: selectedType.label.toUpperCase(), alignment: 'center', bold: true, decoration: 'underline', fontSize: 14 }, { text: `Nomor : ${fullLetterNumber}`, alignment: 'center', margin: [0, 0, 0, 20] } ] : [ { columns: [ { width: '*', table: { widths: [60, 10, '*'], body: [ ['Nomor', ':', fullLetterNumber], ['Lampiran', ':', formData.lampiran], ['Perihal', ':', selectedType.label + ' ' + formData.perihal] ] }, layout: 'noBorders' }, { width: 'auto', text: titiMangsa, alignment: 'right' } ], margin: [0, 0, 0, 20] }, { text: 'Kepada', margin: [0, 0, 0, 0] }, { text: formData.tujuan, margin: [0, 0, 0, 20], bold: true } ],
           { text: formData.pembuka, alignment: 'justify' },
           selectedType.formType === 'invitation' ? { margin: [30, 10, 0, 10], table: { widths: [80, 10, '*'], body: [ ['Hari', ':', formData.hari], ['Tanggal', ':', formData.tanggal_acara], ['Waktu', ':', formData.waktu], ['Tempat', ':', formData.tempat], ] }, layout: 'noBorders' } : { text: formData.isi_utama, alignment: 'justify', margin: [0, 10, 0, 10] },
           { text: formData.penutup, alignment: 'justify', margin: [0, 0, 0, 10] },
           
+          // TANDA TANGAN (DIGITAL) - 3 KOLOM
           { stack: [ { text: isFormal ? titiMangsa : '', margin: [0, 0, 0, 2] }, { text: 'PENGURUS PGRI RANTING KALIJAGA', bold: true } ], alignment: 'center', margin: [0, 15, 0, 15] },
-          { table: { widths: ['*', '*'], body: [ [{ text: 'Ketua', alignment: 'center', bold: false }, { text: 'Sekretaris', alignment: 'center', bold: true }], [{ text: '\n\n\n\n( DENDI SUPARMAN, S.Pd.SD )', alignment: 'center', bold: true, decoration: 'underline' }, { text: '\n\n\n\n( ABDY EKA PRASETIA, S.Pd )', alignment: 'center', bold: true, decoration: 'underline' }], [{ text: 'NPA. 00001', alignment: 'center', bold: true }, { text: 'NPA. 00002', alignment: 'center', bold: true }] ] }, layout: 'noBorders' }
+          { 
+            table: { 
+              widths: ['*', 'auto', '*'], // Kiri (Ketua), Tengah (Stempel), Kanan (Sekretaris)
+              body: [ 
+                [
+                  // KOLOM 1: KETUA
+                  { 
+                     stack: [
+                        { text: 'Ketua', alignment: 'center', bold: false },
+                        { image: ttdKetua, width: 70, alignment: 'center', margin: [0, 5, 0, 0] },
+                        { text: '\n( DENDI SUPARMAN, S.Pd.SD )', alignment: 'center', bold: true, decoration: 'underline' },
+                        { text: 'NPA. 00001', alignment: 'center', bold: true }
+                     ],
+                     alignment: 'center'
+                  },
+                  // KOLOM 2: STEMPEL (DI TENGAH)
+                  { 
+                     image: stempel, 
+                     width: 75, 
+                     alignment: 'center', 
+                     margin: [-10, 25, -10, 0], // Margin negatif agar sedikit mendekat ke ketua/sekre
+                     opacity: 0.9 
+                  },
+                  // KOLOM 3: SEKRETARIS
+                  { 
+                     stack: [
+                        { text: 'Sekretaris', alignment: 'center', bold: true },
+                        { image: ttdSekretaris, width: 70, alignment: 'center', margin: [0, 5, 0, 0] },
+                        { text: '\n( ABDY EKA PRASETIA, S.Pd )', alignment: 'center', bold: true, decoration: 'underline' },
+                        { text: 'NPA. 00002', alignment: 'center', bold: true }
+                     ],
+                     alignment: 'center'
+                  }
+                ] 
+              ] 
+            }, 
+            layout: 'noBorders' 
+          }
         ]
       };
 
@@ -258,23 +297,12 @@ const Letters = () => {
       fetchData();
       setActiveTab('out');
 
-    } catch (e: any) { 
-      alert("Gagal mencetak: " + e.message); 
-    } finally {
-      setUploading(false);
-    }
+    } catch (e: any) { alert("Gagal mencetak: " + e.message); } finally { setUploading(false); }
   };
 
   return (
     <div className="space-y-6 animate-in fade-in">
-      {/* Hidden File Input untuk Upload Arsip */}
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        onChange={handleArchiveFileChange} 
-        className="hidden" 
-        accept="application/pdf,image/*" 
-      />
+      <input type="file" ref={fileInputRef} onChange={handleArchiveFileChange} className="hidden" accept="application/pdf,image/*" />
 
       {!isPreviewing && (
         <div className="flex flex-col md:flex-row justify-between items-end gap-4 bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm">
@@ -391,26 +419,13 @@ const Letters = () => {
                       {/* LOGIKA UPLOAD / LIHAT FILE */}
                       {l.file_url ? (
                         <div className="flex gap-2 justify-center">
-                            <a 
-                              href={l.file_url} 
-                              target="_blank" 
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1 text-green-700 bg-green-50 px-3 py-1.5 rounded-lg border border-green-100 hover:bg-green-100 transition-colors font-bold cursor-pointer"
-                            >
+                            <a href={l.file_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-green-700 bg-green-50 px-3 py-1.5 rounded-lg border border-green-100 hover:bg-green-100 transition-colors font-bold cursor-pointer">
                               <FileText size={12}/> Lihat
                             </a>
                         </div>
                       ) : (
-                        <button 
-                          onClick={() => triggerUploadArchive(l.id)}
-                          disabled={uploadingId === l.id}
-                          className="inline-flex items-center gap-1 text-orange-700 bg-orange-50 px-3 py-1.5 rounded-lg border border-orange-100 hover:bg-orange-100 transition-colors font-bold cursor-pointer"
-                        >
-                          {uploadingId === l.id ? (
-                            <Loader2 size={12} className="animate-spin"/>
-                          ) : (
-                            <FileUp size={12}/> 
-                          )}
+                        <button onClick={() => triggerUploadArchive(l.id)} disabled={uploadingId === l.id} className="inline-flex items-center gap-1 text-orange-700 bg-orange-50 px-3 py-1.5 rounded-lg border border-orange-100 hover:bg-orange-100 transition-colors font-bold cursor-pointer">
+                          {uploadingId === l.id ? <Loader2 size={12} className="animate-spin"/> : <FileUp size={12}/>}
                           {uploadingId === l.id ? '...' : 'Upload Scan'}
                         </button>
                       )}
@@ -461,12 +476,12 @@ const Letters = () => {
               <button onClick={() => setIsPreviewing(false)} className="bg-slate-700 px-4 py-2 rounded-lg font-bold text-sm flex gap-2 hover:bg-slate-600"><ArrowLeft size={16}/> Kembali Edit</button>
               {/* TOMBOL CETAK LANGSUNG */}
               <button onClick={handleDirectPrint} disabled={uploading} className="bg-blue-600 px-6 py-2 rounded-lg font-bold text-sm flex gap-2 hover:bg-blue-700 shadow-lg shadow-blue-500/30">
-                 {uploading ? <><Loader2 className="animate-spin"/> Memproses...</> : <><Printer size={16}/> Cetak PDF (Langsung)</>}
+                 {uploading ? <><Loader2 className="animate-spin"/> Memproses...</> : <><Printer size={16}/> Cetak PDF Digital (Auto TTD)</>}
               </button>
            </div>
            <div className="flex justify-center p-8 bg-gray-900">
               <div className="bg-white w-[215mm] min-h-[330mm] shadow-2xl p-[2.54cm] text-black font-serif relative">
-                 {/* VISUAL PREVIEW HTML (SCREEN ONLY) */}
+                 {/* VISUAL PREVIEW HTML (SCREEN ONLY - BELUM TTD) */}
                  <div className="border-b-4 border-black pb-4 mb-6 flex items-center gap-6">
                     <img src={LOGO_URL} className="w-24 h-auto flex-shrink-0" crossOrigin="anonymous" alt="Logo"/>
                     <div className="flex-1 text-center leading-tight">
