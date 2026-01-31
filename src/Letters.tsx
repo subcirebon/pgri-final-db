@@ -216,14 +216,11 @@ const Letters = () => {
         pageMargins: [72, 40, 72, 72],
         defaultStyle: { font: 'Times', fontSize: 12 },
         content: [
-          // KOP SURAT (3 KOLOM UNTUK CENTERING SEMPURNA)
+          // KOP SURAT (LOGO TENGAH, TEKS TENGAH)
           {
-            columns: [
-              // Kolom 1: Logo
-              { image: logoBase64, width: 90, margin: [0, 15, 0, 0] }, 
-              // Kolom 2: Teks 
-              {
-                width: '*',
+            stack: [
+               { image: logoBase64, width: 90, alignment: 'center', margin: [0, 0, 0, 10] },
+               {
                 stack: [
                   { text: 'PERSATUAN GURU REPUBLIK INDONESIA', bold: true, fontSize: 13 },
                   { text: 'PENGURUS RANTING KALIJAGA', bold: true, fontSize: 18, margin: [0, 2, 0, 2] },
@@ -232,11 +229,10 @@ const Letters = () => {
                   { text: 'Email: pgrikalijaga@gmail.com Website: pgrikalijaga.sekolahdasar.online', fontSize: 9 }
                 ],
                 alignment: 'center'
-              },
-              // Kolom 3: Kosong
-              { text: '', width: 90 } 
+              }
             ],
-            margin: [0, 0, 0, 5]
+            margin: [0, 0, 0, 5],
+            alignment: 'center'
           },
           { stack: [ { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 470, y2: 0, lineWidth: 2.5 }] }, { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 470, y2: 0, lineWidth: 1 }], margin: [0, 2, 0, 0] } ], margin: [0, 2, 0, 20] },
           
@@ -245,51 +241,56 @@ const Letters = () => {
           selectedType.formType === 'invitation' ? { margin: [30, 10, 0, 10], table: { widths: [80, 10, '*'], body: [ ['Hari', ':', formData.hari], ['Tanggal', ':', formData.tanggal_acara], ['Waktu', ':', formData.waktu], ['Tempat', ':', formData.tempat], ] }, layout: 'noBorders' } : { text: formData.isi_utama, alignment: 'justify', margin: [0, 10, 0, 10] },
           { text: formData.penutup, alignment: 'justify', margin: [0, 0, 0, 10] },
           
-          // --- LAYOUT TANDA TANGAN FINAL FIXED ---
-          { stack: [ { text: isFormal ? titiMangsa : '', margin: [0, 0, 0, 2] }, { text: 'PENGURUS PGRI RANTING KALIJAGA', bold: true } ], alignment: 'center', margin: [0, 15, 0, 5] },
+          // --- LAYOUT TANDA TANGAN (TABEL 4 BARIS UNTUK KESEJAJARAN) ---
+          { stack: [ { text: isFormal ? titiMangsa : '', margin: [0, 0, 0, 2] }, { text: 'PENGURUS PGRI RANTING KALIJAGA', bold: true } ], alignment: 'center', margin: [0, 15, 0, 10] },
           { 
-            style: 'signatureTable',
             table: { 
               widths: ['50%', '50%'], 
               body: [ 
+                // BARIS 1: JABATAN
+                [ 
+                  { text: 'Ketua', alignment: 'center', bold: false },
+                  { text: 'Sekretaris', alignment: 'center', bold: true }
+                ],
+                // BARIS 2: AREA GAMBAR (TTD & STEMPEL OVERLAY)
                 [
-                  // KETUA (Kiri)
-                  { 
-                     stack: [
-                        { text: 'Ketua', alignment: 'center', bold: false },
-                        { text: '\n\n\n', fontSize: 12 }, // SPASI MANUAL 3x ENTER
-                        
-                        // Tanda Tangan (Ketua) - Overlay
-                        { image: ttdKetua, width: 110, alignment: 'center', margin: [0, -60, 0, 0] },
-                        
-                        // Stempel (Geser Kanan 130 agar di tengah, Naik -100 agar pas)
-                        { image: stempel, width: 90, alignment: 'center', margin: [130, -90, 0, 0], opacity: 0.9 },
-
-                        // Nama Terang (Tanpa Kurung, Font 10 agar 1 baris)
-                        { text: 'DENDI SUPARMAN, S.Pd.SD', alignment: 'center', bold: true, decoration: 'underline', fontSize: 10, margin: [0, 5, 0, 0] },
-                        { text: 'NPA. 00001', alignment: 'center', bold: true, fontSize: 10 }
-                     ],
-                     alignment: 'center'
+                  {
+                    stack: [
+                       // Spacer agar ada jarak untuk gambar
+                       { text: '\n\n\n', fontSize: 10 }, 
+                       // TTD Ketua (Diperkecil jadi 85, Margin negatif agar menimpa nama di bawahnya)
+                       { image: ttdKetua, width: 85, alignment: 'center', margin: [0, -55, 0, 0] },
+                       // Stempel (Geser kanan agar di tengah, margin negatif agar menimpa TTD)
+                       { image: stempel, width: 90, alignment: 'center', margin: [110, -85, 0, 0], opacity: 0.9 }
+                    ]
                   },
-                  // SEKRETARIS (Kanan)
-                  { 
-                     stack: [
-                        { text: 'Sekretaris', alignment: 'center', bold: true },
-                        { text: '\n\n\n', fontSize: 12 }, // SPASI MANUAL
-                        
-                        // Tanda Tangan (Sekretaris) - Overlay
-                        { image: ttdSekretaris, width: 110, alignment: 'center', margin: [0, -60, 0, 0] },
-
-                        // Nama Terang
-                        { text: 'ABDY EKA PRASETIA, S.Pd', alignment: 'center', bold: true, decoration: 'underline', fontSize: 10, margin: [0, 5, 0, 0] },
-                        { text: 'NPA. 00002', alignment: 'center', bold: true, fontSize: 10 }
-                     ],
-                     alignment: 'center'
+                  {
+                    stack: [
+                       // Spacer sama
+                       { text: '\n\n\n', fontSize: 10 },
+                       // TTD Sekretaris (Margin negatif agar menimpa nama di bawahnya)
+                       { image: ttdSekretaris, width: 110, alignment: 'center', margin: [0, -55, 0, 0] }
+                    ]
                   }
-                ] 
+                ],
+                // BARIS 3: NAMA TERANG (PASTI SEJAJAR)
+                [
+                  { text: 'DENDI SUPARMAN, S.Pd.SD', alignment: 'center', bold: true, decoration: 'underline', fontSize: 11 },
+                  { text: 'ABDY EKA PRASETIA, S.Pd', alignment: 'center', bold: true, decoration: 'underline', fontSize: 11 }
+                ],
+                // BARIS 4: NPA
+                [
+                  { text: 'NPA. 00001', alignment: 'center', bold: true, fontSize: 11 },
+                  { text: 'NPA. 00002', alignment: 'center', bold: true, fontSize: 11 }
+                ]
               ] 
             }, 
-            layout: 'noBorders' 
+            layout: {
+                defaultBorder: false,
+                // Hilangkan padding agar tidak ada jarak tambahan yang mengganggu
+                paddingLeft: function(i) { return 0; }, paddingRight: function(i) { return 0; },
+                paddingTop: function(i) { return 0; }, paddingBottom: function(i) { return 0; },
+            } 
           }
         ]
       };
@@ -483,15 +484,17 @@ const Letters = () => {
            <div className="flex justify-center p-8 bg-gray-900">
               <div className="bg-white w-[215mm] min-h-[330mm] shadow-2xl p-[2.54cm] text-black font-serif relative">
                  {/* VISUAL PREVIEW HTML (SCREEN ONLY) */}
-                 <div className="border-b-4 border-black pb-4 mb-6 flex items-center gap-6">
-                    <img src={LOGO_URL} className="w-24 h-auto flex-shrink-0" crossOrigin="anonymous" alt="Logo"/>
-                    <div className="flex-1 text-center leading-tight">
+                 <div className="flex flex-col items-center text-center mb-8">
+                    <img src={LOGO_URL} className="w-24 h-auto mb-4" crossOrigin="anonymous" alt="Logo"/>
+                    <div className="leading-tight">
                        <h3 className="text-[13pt] font-bold">PERSATUAN GURU REPUBLIK INDONESIA</h3>
                        <h2 className="text-[18pt] font-black">PENGURUS RANTING KALIJAGA</h2>
                        <h4 className="text-[11pt] italic font-bold">Kalijaga Sub Branch</h4>
                        <p className="text-[8.5pt] mt-1">Jl. Teratai Raya No 1 Kalijaga Permai Kel. Kalijaga Kec. Harjamukti Kota Cirebon</p>
                        <p className="text-[8.5pt] text-black">Email: pgrikalijaga@gmail.com Website: pgrikalijaga.sekolahdasar.online</p>
                     </div>
+                    <div className="w-full h-1 bg-black mt-4 mb-1"></div>
+                    <div className="w-full h-0.5 bg-black"></div>
                  </div>
                  <div className="text-sm space-y-6">
                     {selectedType.formType === 'formal' ? ( <div className="text-center space-y-1"> <h3 className="text-[14pt] font-bold underline">{selectedType.label.toUpperCase()}</h3> <p>Nomor : {fullLetterNumber}</p> </div> ) : ( <div className="flex justify-between"> <table><tbody> <tr><td className="w-20">Nomor</td><td className="w-4">:</td><td>{fullLetterNumber}</td></tr> <tr><td>Lampiran</td><td>:</td><td>{formData.lampiran}</td></tr> <tr><td>Perihal</td><td>:</td><td>{selectedType.label} {formData.perihal}</td></tr> </tbody></table> <div className="text-right">{titiMangsa}</div> </div> )}
