@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './supabaseClient';
 import { 
   Inbox, Send, Printer, Plus, Save, 
-  FileText, Eye, X, Loader2, ArrowLeft, History, Upload
+  FileText, Eye, X, Loader2, ArrowLeft, History, Upload, FileUp, Trash2
 } from 'lucide-react';
 
 // --- CONFIG PDFMAKE ---
@@ -27,12 +27,11 @@ pdfMakeInstance.fonts = {
   } 
 };
 
-// --- HELPER GAMBAR (Versi Cepat - Tanpa Error) ---
+// --- HELPER GAMBAR ---
 const getBase64ImageFromURL = (url: string) => {
   return new Promise((resolve) => {
     const img = new Image(); 
     img.setAttribute("crossOrigin", "anonymous");
-    // Gambar kosong transparan jika gagal load (supaya tidak error)
     const fallback = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
     img.onload = () => { 
@@ -87,6 +86,11 @@ const Letters = () => {
   const [lettersOut, setLettersOut] = useState<any[]>([]);
   const [lastLetter, setLastLetter] = useState<string>('Memuat...');
   const [uploading, setUploading] = useState(false);
+  
+  // State untuk Upload Arsip Keluar
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [activeUploadId, setActiveUploadId] = useState<string | null>(null);
 
   // --- STATE SURAT MASUK ---
   const [showInModal, setShowInModal] = useState(false);
@@ -127,6 +131,48 @@ const Letters = () => {
 
   useEffect(() => { fetchData(); }, []);
 
+  // --- TRIGGER UPLOAD FILE SURAT KELUAR ---
+  const triggerUploadArchive = (id: string) => {
+    setActiveUploadId(id);
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleArchiveFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeUploadId) return;
+
+    setUploadingId(activeUploadId);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `outgoing/archive_${activeUploadId}_${Date.now()}.${fileExt}`;
+      
+      // Upload ke Storage
+      const { error: uploadError } = await supabase.storage.from('letters-archive').upload(fileName, file);
+      if (uploadError) throw uploadError;
+
+      // Dapatkan URL
+      const { data: urlData } = supabase.storage.from('letters-archive').getPublicUrl(fileName);
+
+      // Update Database
+      const { error: dbError } = await supabase.from('letters_out')
+        .update({ file_url: urlData.publicUrl })
+        .eq('id', activeUploadId);
+
+      if (dbError) throw dbError;
+
+      alert("Arsip berhasil diupload!");
+      fetchData();
+    } catch (err: any) {
+      alert("Gagal upload: " + err.message);
+    } finally {
+      setUploadingId(null);
+      setActiveUploadId(null);
+      if (fileInputRef.current) fileInputRef.current.value = ''; // Reset input
+    }
+  };
+
   // --- SAVE SURAT MASUK ---
   const handleSaveIncoming = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -157,24 +203,22 @@ const Letters = () => {
   };
 
   // --- CETAK LANGSUNG (Direct Print) ---
-  // Fitur: Langsung buka PDF, Catat data ke DB, TANPA Upload file (Anti Macet)
   const handleDirectPrint = async () => {
     setUploading(true);
     try {
       const isFormal = selectedType.formType === 'formal';
       const logoBase64 = await getBase64ImageFromURL(LOGO_URL);
 
-      // 1. Simpan Data Surat ke Database (Metadata saja)
-      // Ini penting agar nomor surat tercatat di sistem
+      // Simpan Metadata ke DB
       await supabase.from('letters_out').insert([{ 
         date_sent: new Date(), 
         letter_number: fullLetterNumber, 
         recipient: isFormal ? '-' : formData.tujuan, 
         subject: selectedType.label + ' ' + formData.perihal,
-        file_url: null // Kita kosongkan karena tidak upload file
+        file_url: null 
       }]);
 
-      // 2. Buat Dokumen PDF
+      // Buat PDF
       const docDefinition: any = {
         pageSize: 'FOLIO',
         pageMargins: [72, 40, 72, 72],
@@ -210,10 +254,7 @@ const Letters = () => {
         ]
       };
 
-      // 3. Langsung Buka PDF di Browser (Tanpa Upload)
       pdfMakeInstance.createPdf(docDefinition).open();
-      
-      // 4. Update Tampilan
       fetchData();
       setActiveTab('out');
 
@@ -226,6 +267,15 @@ const Letters = () => {
 
   return (
     <div className="space-y-6 animate-in fade-in">
+      {/* Hidden File Input untuk Upload Arsip */}
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        onChange={handleArchiveFileChange} 
+        className="hidden" 
+        accept="application/pdf,image/*" 
+      />
+
       {!isPreviewing && (
         <div className="flex flex-col md:flex-row justify-between items-end gap-4 bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm">
           <div>
@@ -327,7 +377,7 @@ const Letters = () => {
                  <th className="p-4">Tujuan</th>
                  <th className="p-4">No. Surat</th>
                  <th className="p-4">Perihal</th>
-                 <th className="p-4 text-center">File</th> 
+                 <th className="p-4 text-center">Arsip Digital</th> 
                </tr>
              </thead>
              <tbody className="divide-y">
@@ -338,15 +388,31 @@ const Letters = () => {
                    <td className="p-4 font-mono">{l.letter_number}</td>
                    <td className="p-4">{l.subject}</td>
                    <td className="p-4 text-center">
+                      {/* LOGIKA UPLOAD / LIHAT FILE */}
                       {l.file_url ? (
-                        <a href={l.file_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-green-700 bg-green-50 px-3 py-1.5 rounded-lg border border-green-100 hover:bg-green-100 transition-colors font-bold cursor-pointer">
-                          <FileText size={10}/> Lihat Dokumen
-                        </a>
+                        <div className="flex gap-2 justify-center">
+                            <a 
+                              href={l.file_url} 
+                              target="_blank" 
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-green-700 bg-green-50 px-3 py-1.5 rounded-lg border border-green-100 hover:bg-green-100 transition-colors font-bold cursor-pointer"
+                            >
+                              <FileText size={12}/> Lihat
+                            </a>
+                        </div>
                       ) : (
-                        // Indikator bahwa file ini hanya data, tidak ada PDF arsip
-                        <span className="text-gray-400 italic text-[10px] cursor-not-allowed" title="Dokumen ini tidak diupload otomatis">
-                          Tercetak (Manual)
-                        </span>
+                        <button 
+                          onClick={() => triggerUploadArchive(l.id)}
+                          disabled={uploadingId === l.id}
+                          className="inline-flex items-center gap-1 text-orange-700 bg-orange-50 px-3 py-1.5 rounded-lg border border-orange-100 hover:bg-orange-100 transition-colors font-bold cursor-pointer"
+                        >
+                          {uploadingId === l.id ? (
+                            <Loader2 size={12} className="animate-spin"/>
+                          ) : (
+                            <FileUp size={12}/> 
+                          )}
+                          {uploadingId === l.id ? '...' : 'Upload Scan'}
+                        </button>
                       )}
                    </td>
                  </tr>
