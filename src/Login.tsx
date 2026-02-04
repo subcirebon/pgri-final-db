@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { supabase } from './supabaseClient';
+import { Link } from 'react-router-dom'; // 1. Import Link
 import { LogIn, Loader2, AlertCircle } from 'lucide-react';
 
-// PERBAIKAN: onLogin sekarang menerima 3 parameter (role, name, id)
 interface LoginProps {
   onLogin: (role: string, name: string, id: string) => void;
 }
@@ -19,9 +19,8 @@ const Login = ({ onLogin }: LoginProps) => {
     setErrorMsg('');
 
     try {
-      // 1. Cek User Super Admin (Hardcode untuk Keamanan Darurat)
+      // 1. Cek User Super Admin (Hardcode)
       if (username === 'admin' && password === 'admin123') {
-        // ID 0 biasanya aman untuk super admin hardcode
         onLogin('super_admin', 'SUPER ADMIN', '0'); 
         return;
       }
@@ -31,7 +30,7 @@ const Login = ({ onLogin }: LoginProps) => {
         .from('members')
         .select('*')
         .eq('username', username)
-        .eq('password', password) // Catatan: Idealnya password di-hash, tapi untuk ini ok.
+        .eq('password', password)
         .single();
 
       if (error || !data) {
@@ -42,10 +41,9 @@ const Login = ({ onLogin }: LoginProps) => {
         throw new Error('Akun Anda belum diaktifkan oleh Admin.');
       }
 
-      // 3. Login Berhasil -> KIRIM ID KE APP.TSX
-      // Kita asumsikan kolom role ada, jika tidak default ke 'user'
+      // 3. Login Berhasil
       const role = data.role || 'user'; 
-      onLogin(role, data.name, data.id); // <--- ID DIKIRIM DI SINI
+      onLogin(role, data.full_name || data.name, data.id); // Sesuaikan field nama
 
     } catch (err: any) {
       setErrorMsg(err.message);
@@ -106,10 +104,17 @@ const Login = ({ onLogin }: LoginProps) => {
           </button>
         </form>
 
-        <div className="mt-8 text-center">
-          <p className="text-[10px] text-gray-400 font-bold uppercase flex items-center justify-center gap-1">
-            <AlertCircle size={12}/> Belum punya akun? Daftar disini
+        {/* --- BAGIAN INI DIPERBAIKI --- */}
+        <div className="mt-8 text-center pt-6 border-t border-gray-100">
+          <p className="text-[10px] text-gray-400 font-bold uppercase mb-2">
+            Belum punya akun?
           </p>
+          <Link 
+            to="/register" 
+            className="inline-block px-4 py-2 bg-gray-100 text-red-800 rounded-lg text-xs font-black uppercase tracking-wider hover:bg-red-50 hover:text-red-900 transition-colors"
+          >
+            Daftar Disini
+          </Link>
         </div>
 
       </div>
