@@ -4,7 +4,7 @@ import { supabase } from './supabaseClient';
 import { 
   Wallet, TrendingUp, TrendingDown, Plus, Download, Trash2, Filter, 
   FileSpreadsheet, Printer, ChevronDown, X, ArrowRightLeft, Lock, 
-  Upload, Eye, FileText, Loader2 
+  Upload, Eye, FileText, Loader2, CheckCircle, XCircle, AlertCircle, Edit3
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -13,7 +13,7 @@ import autoTable from 'jspdf-autotable';
 interface Transaction {
   id: number;
   date: string;
-  created_at: string; // Tambahkan ini untuk key sort
+  created_at: string;
   type: 'income' | 'outcome';
   category: string;
   amount: number;
@@ -24,36 +24,97 @@ interface Transaction {
 const Finance = () => {
   const { userRole } = useOutletContext<{ userRole: string }>();
   
-  // HAK AKSES
   const canAdd = userRole === 'super_admin' || userRole === 'admin';
   const canDelete = userRole === 'super_admin';
   const canDownload = userRole === 'super_admin' || userRole === 'admin';
 
-  // STATE DATA
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [pendingDonations, setPendingDonations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // STATE BARU UNTUK MODAL VERIFIKASI (EDIT NOMINAL)
+  const [verifyModal, setVerifyModal] = useState<{ show: boolean, item: any | null }>({ show: false, item: null });
+  const [realAmount, setRealAmount] = useState<string>('');
+  const [verifying, setVerifying] = useState(false);
 
-  // LOAD DATA (PERBAIKAN SORTING DI SINI)
   const fetchData = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('finance')
-        .select('*')
-        // Prioritas 1: Urutkan Tanggal Transaksi (Terbaru ke Terlama)
-        .order('date', { ascending: false })
-        // Prioritas 2: Urutkan Waktu Input (Terbaru ke Terlama) -> Agar yg baru diinput naik ke atas
-        .order('created_at', { ascending: false });
+      const { data: financeData, error: financeError } = await supabase
+        .from('finance').select('*').order('date', { ascending: false }).order('created_at', { ascending: false });
+      if (financeError) throw financeError;
+      setTransactions(financeData || []);
 
-      if (error) throw error;
-      setTransactions(data || []);
+      if (canAdd) {
+        const { data: donationData, error: donationError } = await supabase
+          .from('donations').select('*').eq('status', 'Pending').order('date', { ascending: false });
+        if (!donationError) setPendingDonations(donationData || []);
+      }
     } catch (err) { console.error(err); } 
     finally { setLoading(false); }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [userRole]);
 
-  // STATE UI & FORM
+  // --- 1. BUKA MODAL VERIFIKASI ---
+  const openVerifyModal = (item: any) => {
+    setVerifyModal({ show: true, item: item });
+    setRealAmount(item.amount.toString()); // Isi default dengan nominal awal
+  };
+
+  // --- 2. EKSEKUSI VERIFIKASI (DENGAN NOMINAL EDITAN) ---
+  const handleConfirmVerification = async () => {
+    if (!verifyModal.item || !realAmount) return;
+    setVerifying(true);
+
+    const finalAmount = parseInt(realAmount);
+    const item = verifyModal.item;
+
+    try {
+      // A. Masukkan ke Tabel Finance (Sesuai Nominal Real)
+      const { error: insertError } = await supabase.from('finance').insert([{
+        date: new Date().toISOString().split('T')[0],
+        type: 'income',
+        category: 'Sumbangan',
+        amount: finalAmount, // Pakai nominal yang sudah diedit admin
+        description: `Kado/Donasi dari ${item.sender_name} untuk ${item.receiver_name}`,
+        proof_url: item.proof_url
+      }]);
+
+      if (insertError) throw insertError;
+
+      // B. Update Data Donasi (Status Verified & Update Nominal jika berubah)
+      const { error: updateError } = await supabase
+        .from('donations')
+        .update({ 
+            status: 'Verified',
+            amount: finalAmount // Update juga di tabel asal supaya sinkron
+        })
+        .eq('id', item.id);
+
+      if (updateError) throw updateError;
+
+      alert("Dana berhasil diverifikasi dan dicatat ke Kas!");
+      setVerifyModal({ show: false, item: null });
+      fetchData();
+
+    } catch (err: any) {
+      alert("Gagal verifikasi: " + err.message);
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  // --- TOLAK DONASI ---
+  const handleRejectDonation = async (id: number) => {
+    if (!window.confirm("Yakin ingin menolak donasi ini?")) return;
+    try {
+      await supabase.from('donations').update({ status: 'Rejected' }).eq('id', id);
+      fetchData();
+    } catch (e) { alert("Gagal menolak."); }
+  };
+
+  // State UI Standar
   const [showModal, setShowModal] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [previewProof, setPreviewProof] = useState<string | null>(null);
@@ -64,15 +125,12 @@ const Finance = () => {
   const [uploading, setUploading] = useState(false);
   const [uploadedProofUrl, setUploadedProofUrl] = useState('');
 
-  // --- FUNGSI FORMAT RUPIAH ---
   const formatRp = (num: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(num);
 
-  // --- FUNGSI CETAK PDF (PREVIEW MODE) ---
+  // PDF Generator (Tetap sama)
   const generatePDF = () => {
     const doc = new jsPDF();
     doc.setFont("times", "normal");
-
-    // KOP
     doc.setFontSize(14); doc.setFont("times", "bold");
     doc.text("PERSATUAN GURU REPUBLIK INDONESIA (PGRI)", 105, 15, { align: "center" });
     doc.setFontSize(12); doc.text("RANTING KALIJAGA", 105, 22, { align: "center" });
@@ -80,7 +138,6 @@ const Finance = () => {
     doc.text("Laporan Keuangan & Kas Organisasi", 105, 28, { align: "center" });
     doc.line(14, 32, 196, 32);
 
-    // TABEL
     const tableBody = transactions.map((t, index) => [
       index + 1, t.date, t.category, t.description,
       t.type === 'income' ? formatRp(t.amount) : '-',
@@ -94,14 +151,9 @@ const Finance = () => {
       theme: 'grid',
       styles: { font: "times", fontSize: 9, cellPadding: 2 },
       headStyles: { fillColor: [153, 27, 27], textColor: 255, fontStyle: 'bold', halign: 'center' },
-      columnStyles: {
-        0: { halign: 'center', cellWidth: 10 },
-        4: { halign: 'right', fontStyle: 'bold', textColor: [22, 163, 74] },
-        5: { halign: 'right', fontStyle: 'bold', textColor: [220, 38, 38] },
-      }
+      columnStyles: { 0: { halign: 'center', cellWidth: 10 }, 4: { halign: 'right', fontStyle: 'bold', textColor: [22, 163, 74] }, 5: { halign: 'right', fontStyle: 'bold', textColor: [220, 38, 38] } }
     });
 
-    // RINGKASAN
     const finalY = (doc as any).lastAutoTable.finalY + 10;
     const totalInc = transactions.filter(t => t.type === 'income').reduce((a, b) => a + b.amount, 0);
     const totalOut = transactions.filter(t => t.type === 'outcome').reduce((a, b) => a + b.amount, 0);
@@ -115,7 +167,6 @@ const Finance = () => {
     doc.setFont("times", "bold");
     doc.text(`SALDO AKHIR      : ${formatRp(balance)}`, 14, finalY + 18);
 
-    // TTD
     const signY = finalY + 30;
     const today = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
     doc.setFont("times", "normal");
@@ -129,33 +180,13 @@ const Finance = () => {
     window.open(URL.createObjectURL(doc.output('blob')), '_blank');
   };
 
-  // --- KOMPRESI GAMBAR ---
-  const compressImage = (file: File): Promise<Blob> => {
-    return new Promise((resolve, reject) => {
-      const img = document.createElement('img');
-      img.src = URL.createObjectURL(file);
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width; canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, img.width, img.height);
-          canvas.toBlob((blob) => { if (blob) resolve(blob); else reject(new Error('Gagal')); }, 'image/jpeg', 0.6); 
-        } else reject(new Error('Context null'));
-      };
-      img.onerror = reject;
-    });
-  };
-
-  // HANDLERS
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
     try {
-      const compressed = await compressImage(file);
       const fileName = `finance-${Date.now()}.jpg`;
-      const { error } = await supabase.storage.from('transfer-proofs').upload(fileName, compressed, { contentType: 'image/jpeg' });
+      const { error } = await supabase.storage.from('transfer-proofs').upload(fileName, file);
       if (!error) {
         const { data } = supabase.storage.from('transfer-proofs').getPublicUrl(fileName);
         setUploadedProofUrl(data.publicUrl);
@@ -192,7 +223,6 @@ const Finance = () => {
     XLSX.writeFile(wb, `Laporan_Keuangan_PGRI.xlsx`);
   };
 
-  // TOTAL & FILTER
   const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + Number(t.amount), 0);
   const totalExpense = transactions.filter(t => t.type === 'outcome').reduce((sum, t) => sum + Number(t.amount), 0);
   const currentBalance = totalIncome - totalExpense;
@@ -221,6 +251,39 @@ const Finance = () => {
           {canAdd && <button onClick={() => setShowModal(true)} className="bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-indigo-800 shadow-md text-sm font-bold"><Plus size={18} /> <span>Catat Transaksi</span></button>}
         </div>
       </div>
+
+      {/* --- NOTIFIKASI VERIFIKASI DANA (KHUSUS ADMIN) --- */}
+      {canAdd && pendingDonations.length > 0 && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6 shadow-sm animate-pulse-slow">
+          <h3 className="text-yellow-800 font-bold text-lg flex items-center gap-2 uppercase italic mb-4">
+            <AlertCircle className="animate-bounce" /> Menunggu Verifikasi ({pendingDonations.length})
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {pendingDonations.map((item) => (
+              <div key={item.id} className="bg-white p-4 rounded-xl border border-yellow-200 shadow-sm flex flex-col gap-3">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="text-xs text-gray-500 font-bold uppercase">{item.date}</p>
+                    <h4 className="font-bold text-gray-800 text-md">{item.sender_name}</h4>
+                    <p className="text-xs text-gray-500 italic">untuk {item.receiver_name}</p>
+                  </div>
+                  <span className="bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded-md">{formatRp(item.amount)}</span>
+                </div>
+                
+                <div className="flex gap-2 mt-auto">
+                  <button onClick={() => setPreviewProof(item.proof_url)} className="flex-1 bg-gray-100 text-gray-600 py-2 rounded-lg text-xs font-bold hover:bg-gray-200 flex items-center justify-center gap-1"><Eye size={14}/> Bukti</button>
+                  <button onClick={() => handleRejectDonation(item.id)} className="flex-1 border border-red-200 text-red-600 py-2 rounded-lg text-xs font-bold hover:bg-red-50 flex items-center justify-center gap-1"><XCircle size={14}/> Tolak</button>
+                  
+                  {/* TOMBOL INI MEMBUKA MODAL VERIFIKASI BARU */}
+                  <button onClick={() => openVerifyModal(item)} className="flex-[2] bg-green-600 text-white py-2 rounded-lg text-xs font-bold hover:bg-green-700 shadow-md flex items-center justify-center gap-1">
+                    <CheckCircle size={14}/> Proses
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* CARDS SALDO */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -268,11 +331,63 @@ const Finance = () => {
         </div>
       </div>
 
-      {/* MODAL INPUT */}
+      {/* --- MODAL KHUSUS VERIFIKASI (EDIT NOMINAL) --- */}
+      {verifyModal.show && verifyModal.item && (
+        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl animate-in zoom-in duration-200">
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h3 className="font-black text-lg text-gray-800 uppercase">Verifikasi Dana Masuk</h3>
+                <p className="text-xs text-gray-500">Sesuaikan nominal dengan bukti transfer.</p>
+              </div>
+              <button onClick={() => setVerifyModal({ show: false, item: null })}><X size={20}/></button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Preview Bukti Kecil */}
+              <div className="flex justify-center bg-gray-100 p-2 rounded-lg border border-dashed border-gray-300 cursor-pointer hover:bg-gray-200" onClick={() => setPreviewProof(verifyModal.item.proof_url)}>
+                <div className="text-center">
+                   <img src={verifyModal.item.proof_url} className="h-24 w-auto object-contain rounded-md mx-auto" alt="Proof"/>
+                   <span className="text-[10px] text-blue-600 font-bold flex items-center justify-center gap-1 mt-1"><Eye size={10}/> Klik Perbesar</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Dari (Pengirim)</label>
+                <div className="bg-gray-50 p-3 rounded-lg text-sm font-bold text-gray-800 border">{verifyModal.item.sender_name}</div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-gray-500 uppercase mb-1 flex items-center gap-1">
+                  Nominal Diterima (Edit jika beda) <Edit3 size={12}/>
+                </label>
+                <input 
+                  type="number" 
+                  className="w-full p-3 border-2 border-green-200 rounded-xl font-mono text-lg font-bold text-green-700 focus:ring-2 focus:ring-green-500 outline-none"
+                  value={realAmount}
+                  onChange={(e) => setRealAmount(e.target.value)}
+                />
+                <p className="text-[10px] text-gray-400 mt-1 italic text-right">
+                  *Nominal ini yang akan tercatat di Kas & Laporan.
+                </p>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button onClick={() => setVerifyModal({ show: false, item: null })} className="flex-1 py-3 border rounded-xl font-bold text-xs text-gray-500">Batal</button>
+                <button onClick={handleConfirmVerification} disabled={verifying || !realAmount} className="flex-[2] bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-bold text-xs shadow-lg flex justify-center items-center gap-2">
+                  {verifying ? <Loader2 size={16} className="animate-spin"/> : <><CheckCircle size={16}/> Konfirmasi Sah</>}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL INPUT TRANSAKSI MANUAL (ADMIN) */}
       {canAdd && showModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
            <div className="bg-white rounded-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto animate-in zoom-in duration-200">
-              <div className="flex justify-between items-center mb-4"><h3 className="font-bold text-lg uppercase text-gray-800">Catat Transaksi</h3><button onClick={() => setShowModal(false)}><X size={20}/></button></div>
+              <div className="flex justify-between items-center mb-4"><h3 className="font-bold text-lg uppercase text-gray-800">Catat Transaksi Manual</h3><button onClick={() => setShowModal(false)}><X size={20}/></button></div>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="flex bg-gray-100 p-1 rounded-lg">
                   <button type="button" onClick={() => setFormData({...formData, type: 'income', category: 'Iuran Wajib'})} className={`flex-1 py-2 rounded-md text-sm font-bold transition-all ${formData.type === 'income' ? 'bg-white text-green-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Pemasukan</button>
@@ -292,9 +407,9 @@ const Finance = () => {
         </div>
       )}
 
-      {/* MODAL PREVIEW BUKTI */}
+      {/* MODAL PREVIEW BUKTI BESAR */}
       {previewProof && (
-        <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in" onClick={() => setPreviewProof(null)}>
+        <div className="fixed inset-0 bg-black/90 z-[70] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in" onClick={() => setPreviewProof(null)}>
           <div className="relative w-full h-full flex items-center justify-center">
             <button onClick={() => setPreviewProof(null)} className="absolute top-4 right-4 text-white hover:text-red-400 bg-white/20 p-2 rounded-full z-50"><X size={32}/></button>
             <img src={previewProof} alt="Bukti Transaksi" className="max-w-full max-h-full object-contain rounded-lg shadow-2xl" />

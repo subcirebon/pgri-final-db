@@ -3,14 +3,13 @@ import { useOutletContext } from 'react-router-dom';
 import { supabase } from './supabaseClient';
 import { 
   Users, Megaphone, Gift, MessageCircle, 
-  CreditCard, Loader2, X, Upload, ImageIcon, QrCode
+  CreditCard, Loader2, X, Upload, ImageIcon, QrCode, Calendar, ArrowRight
 } from 'lucide-react';
 
-// Link Gambar QRIS Anda
-const QRIS_IMAGE_URL = "https://vuzwlgwzhiuosgeohhjl.supabase.co/storage/v1/object/public/letters-archive/qris-placeholder.png"; 
+// --- URL QRIS ASLI ---
+const QRIS_IMAGE_URL = "https://vuzwlgwzhiuosgeohhjl.supabase.co/storage/v1/object/public/asset/qris-prgi-ranting-kalijaga.jpeg"; 
 
 const Dashboard = () => {
-  // Mengambil data dari context login
   const { userName } = useOutletContext<{ userName: string, userRole: string }>();
   
   const [stats, setStats] = useState({ members: 0, balance: 0, letters: 0 });
@@ -18,13 +17,16 @@ const Dashboard = () => {
   const [birthdays, setBirthdays] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // State Modal Kado
   const [showModal, setShowModal] = useState(false);
   const [showProofModal, setShowProofModal] = useState(false);
   const [selectedMember, setSelectedMember] = useState<any>(null);
   const [amount, setAmount] = useState('50000');
-  
   const [uploading, setUploading] = useState(false);
   const [proofUrl, setProofUrl] = useState('');
+
+  // State Modal Berita
+  const [selectedNews, setSelectedNews] = useState<any>(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -49,6 +51,30 @@ const Dashboard = () => {
 
   useEffect(() => { fetchData(); }, [userName]);
 
+  // --- FUNGSI AGAR LINK BISA DIKLIK ---
+  const renderContentWithLinks = (text: string) => {
+    // Regex untuk mendeteksi URL (http/https)
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    
+    return text.split(urlRegex).map((part, index) => {
+      if (part.match(urlRegex)) {
+        return (
+          <a
+            key={index}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-600 underline font-bold hover:text-blue-800 break-words"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {part}
+          </a>
+        );
+      }
+      return part;
+    });
+  };
+
   const handleUploadProof = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -58,29 +84,19 @@ const Dashboard = () => {
         const fileExt = file.name.split('.').pop();
         const fileName = `proof_${Date.now()}.${fileExt}`;
 
-        const { error: upError } = await supabase.storage
-            .from('transfer-proofs') 
-            .upload(fileName, file);
-
+        const { error: upError } = await supabase.storage.from('transfer-proofs').upload(fileName, file);
         if (upError) throw upError;
 
-        const { data } = supabase.storage
-            .from('transfer-proofs')
-            .getPublicUrl(fileName);
-
+        const { data } = supabase.storage.from('transfer-proofs').getPublicUrl(fileName);
         setProofUrl(data.publicUrl);
 
-    } catch (error: any) {
-        alert('Gagal upload bukti: ' + error.message);
-    } finally {
-        setUploading(false);
-    }
+    } catch (error: any) { alert('Gagal upload: ' + error.message); } 
+    finally { setUploading(false); }
   };
 
   const handleFinalConfirm = async () => {
     if (!proofUrl) return alert('Silakan upload bukti transfer terlebih dahulu!');
     const nominal = parseInt(amount);
-
     const finalSenderName = userName || localStorage.getItem('pgri_name') || 'Anggota PGRI';
 
     const { error } = await supabase.from('donations').insert([{
@@ -105,7 +121,6 @@ const Dashboard = () => {
                     `Mohon diverifikasi. Terima kasih.`;
 
       window.open(`https://wa.me/${nomorBendahara}?text=${pesan}`, '_blank');
-      
       alert('Kado berhasil dikirim dan menunggu verifikasi Admin.');
     } else {
       alert('Gagal mencatat donasi: ' + error.message);
@@ -116,6 +131,7 @@ const Dashboard = () => {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
+      
       {/* Banner Ultah */}
       {birthdays.length > 0 && (
         <div className="bg-gradient-to-r from-pink-600 to-rose-600 rounded-[28px] p-6 text-white shadow-xl relative overflow-hidden">
@@ -126,32 +142,16 @@ const Dashboard = () => {
               <p className="text-[12px] font-black text-gray-900 capitalize tracking-wider">Mari Kita Doakan dan Beri Hadiah di Hari Bahagianya!</p>
               <div className="flex flex-wrap justify-center md:justify-start gap-3 mt-4">
                 {birthdays.map((m) => {
-                  // --- LOGIKA HITUNG UMUR & PESAN WA ---
                   const currentYear = new Date().getFullYear();
                   const birthYear = new Date(m.birth_date).getFullYear();
                   const age = currentYear - birthYear;
-                  
-                  // Nama Pengirim (User yang Login)
                   const senderName = userName || localStorage.getItem('pgri_name') || 'Rekan PGRI';
-                  
-                  // Format Pesan WA
-                  const waMessage = `*Selamat Ulang Tahun yang ke-${age}* 🎂%0A%0A` +
-                                    `Semoga panjang umur, sehat selalu, dan semakin sukses dalam mendidik anak bangsa.%0A%0A` +
-                                    `Dari Rekan Seperjuangan,%0A*${senderName.toUpperCase()}*`;
-                  // -------------------------------------
+                  const waMessage = `*Selamat Ulang Tahun yang ke-${age}* 🎂%0A%0ASemoga panjang umur, sehat selalu, dan semakin sukses dalam mendidik anak bangsa.%0A%0ADari Rekan Seperjuangan,%0A*${senderName.toUpperCase()}*`;
 
                   return (
                     <div key={m.id} className="flex items-center gap-3 bg-white text-pink-700 px-4 py-2 rounded-2xl text-xs font-black shadow-lg">
                       <span className="uppercase">{m.name}</span>
-                      {/* Tombol WA dengan Pesan Dinamis */}
-                      <button 
-                        onClick={() => window.open(`https://wa.me/${m.phone}?text=${waMessage}`, '_blank')} 
-                        className="text-green-600 hover:scale-110 transition-transform"
-                        title="Kirim Ucapan WA"
-                      >
-                        <MessageCircle size={18} />
-                      </button>
-                      
+                      <button onClick={() => window.open(`https://wa.me/${m.phone}?text=${waMessage}`, '_blank')} className="text-green-600 hover:scale-110 transition-transform"><MessageCircle size={18} /></button>
                       <button onClick={() => { setSelectedMember(m); setShowModal(true); }} className="bg-yellow-400 text-yellow-900 px-3 py-1 rounded-xl text-[10px] flex items-center gap-1 hover:bg-yellow-500 transition-all font-bold"><CreditCard size={14} /> KADO</button>
                     </div>
                   );
@@ -178,19 +178,58 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Info Berita */}
+      {/* INFO BERITA */}
       <div className="bg-white rounded-[32px] border border-gray-100 p-8 shadow-sm">
          <h3 className="text-xl font-black text-gray-800 flex items-center gap-3 uppercase italic mb-8"><Megaphone size={24} className="text-red-700" /> Berita Terkini</h3>
          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
            {news.map(item => (
-             <div key={item.id} className="border border-gray-100 rounded-[24px] p-5">
-               <span className="text-[8px] font-black bg-red-50 text-red-700 px-2 py-1 rounded-full uppercase">{item.category}</span>
-               <h4 className="font-bold text-gray-800 text-sm mt-3 uppercase line-clamp-2">{item.title}</h4>
-               <p className="text-[10px] text-gray-500 mt-2 line-clamp-3 text-justify">{item.content}</p>
+             <div 
+                key={item.id} 
+                onClick={() => setSelectedNews(item)} 
+                className="border border-gray-100 rounded-[24px] p-5 cursor-pointer hover:shadow-lg hover:border-red-200 transition-all group h-full flex flex-col"
+             >
+               <div>
+                 <span className="text-[8px] font-black bg-red-50 text-red-700 px-2 py-1 rounded-full uppercase">{item.category}</span>
+                 <h4 className="font-bold text-gray-800 text-sm mt-3 uppercase line-clamp-2 group-hover:text-red-800 transition-colors">{item.title}</h4>
+                 <p className="text-[10px] text-gray-500 mt-2 line-clamp-3 text-justify">{item.content}</p>
+               </div>
+               <div className="mt-auto pt-4 flex items-center text-red-600 text-[10px] font-bold gap-1 group-hover:gap-2 transition-all">
+                 Baca Selengkapnya <ArrowRight size={12}/>
+               </div>
              </div>
            ))}
          </div>
       </div>
+
+      {/* MODAL BACA BERITA FULL (DENGAN LINK CLICKABLE) */}
+      {selectedNews && (
+        <div className="fixed inset-0 bg-black/70 z-[70] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in" onClick={() => setSelectedNews(null)}>
+          <div className="bg-white rounded-[32px] w-full max-w-2xl max-h-[85vh] shadow-2xl overflow-hidden flex flex-col animate-in slide-in-from-bottom-10" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-red-800 p-6 flex justify-between items-start text-white flex-shrink-0">
+              <div className="pr-4">
+                <span className="bg-white/20 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider mb-2 inline-block">{selectedNews.category}</span>
+                <h2 className="text-xl md:text-2xl font-black uppercase leading-tight">{selectedNews.title}</h2>
+                <div className="flex items-center gap-2 mt-2 text-red-100 text-xs">
+                  <Calendar size={14}/>
+                  <span>{new Date(selectedNews.date).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                </div>
+              </div>
+              <button onClick={() => setSelectedNews(null)} className="bg-white/10 p-2 rounded-full hover:bg-white/20 transition-colors flex-shrink-0"><X size={24} /></button>
+            </div>
+            
+            <div className="p-8 overflow-y-auto custom-scrollbar">
+              <div className="text-sm md:text-base text-gray-700 leading-relaxed text-justify whitespace-pre-wrap font-medium">
+                {/* PANGGIL FUNGSI LINK DETECTOR DISINI */}
+                {renderContentWithLinks(selectedNews.content)}
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-gray-100 bg-gray-50 flex justify-end flex-shrink-0">
+              <button onClick={() => setSelectedNews(null)} className="bg-gray-200 text-gray-700 px-6 py-2 rounded-xl font-bold text-xs hover:bg-gray-300 transition-colors uppercase">Tutup Berita</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL KADO */}
       {showModal && selectedMember && (
