@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
-import { useNavigate } from 'react-router-dom'; // Pakai useNavigate
+// Kita HAPUS useNavigate, ganti pakai cara manual
 import { LogIn, Loader2, AlertCircle, UserPlus } from 'lucide-react';
 
 interface LoginProps {
@@ -8,11 +8,15 @@ interface LoginProps {
 }
 
 const Login = ({ onLogin }: LoginProps) => {
-  const navigate = useNavigate(); // Hook untuk pindah halaman
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  // 1. BERSIHKAN DATA LAMA SAAT MEMBUKA HALAMAN LOGIN
+  useEffect(() => {
+    localStorage.clear(); // Hapus semua sisa login yang mungkin bikin error
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,7 +64,6 @@ const Login = ({ onLogin }: LoginProps) => {
         {/* Header Logo */}
         <div className="text-center mb-8">
           <div className="w-20 h-20 bg-gray-100 rounded-full mx-auto mb-4 flex items-center justify-center shadow-inner">
-             {/* Ganti src dengan '/logo-pgri.png' jika sudah ada di folder public */}
              <img 
                src="https://upload.wikimedia.org/wikipedia/commons/8/89/Lambang_PGRI.svg" 
                alt="PGRI" 
@@ -74,7 +77,7 @@ const Login = ({ onLogin }: LoginProps) => {
         {/* Form Login */}
         <form onSubmit={handleLogin} className="space-y-5 relative z-20">
           {errorMsg && (
-            <div className="bg-red-50 text-red-600 p-3 rounded-xl text-xs font-bold flex items-center gap-2 animate-pulse">
+            <div className="bg-red-50 text-red-600 p-3 rounded-xl text-xs font-bold flex items-center gap-2">
               <AlertCircle size={16}/> {errorMsg}
             </div>
           )}
@@ -112,20 +115,19 @@ const Login = ({ onLogin }: LoginProps) => {
           </button>
         </form>
 
-        {/* --- BAGIAN TOMBOL DAFTAR (DIPERBAIKI) --- */}
+        {/* --- BAGIAN TOMBOL DAFTAR (LINK HTML MANUAL) --- */}
         <div className="mt-8 text-center pt-6 border-t border-gray-100 relative z-30">
           <p className="text-[10px] text-gray-400 font-bold uppercase mb-3">
             Belum terdaftar sebagai anggota?
           </p>
           
-          {/* Menggunakan Button + onClick navigate (Lebih Kuat daripada Link) */}
-          <button 
-            type="button"
-            onClick={() => navigate('/register')}
-            className="w-full py-3 bg-gray-100 hover:bg-red-50 text-gray-600 hover:text-red-700 rounded-xl font-black uppercase text-xs tracking-widest transition-colors flex items-center justify-center gap-2 cursor-pointer border border-transparent hover:border-red-200"
+          {/* Menggunakan tag <a> biasa. Ini PASTI bisa diklik kecuali keyboard rusak */}
+          <a 
+            href="/register"
+            className="block w-full py-3 bg-gray-100 hover:bg-red-50 text-gray-600 hover:text-red-700 rounded-xl font-black uppercase text-xs tracking-widest transition-colors flex items-center justify-center gap-2 cursor-pointer border border-transparent hover:border-red-200 no-underline"
           >
             <UserPlus size={16}/> Daftar Akun Baru
-          </button>
+          </a>
         </div>
 
       </div>
