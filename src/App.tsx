@@ -4,7 +4,13 @@ import Layout from './Layout';
 import Login from './Login';
 import Register from './Register'; 
 
-// --- IMPORT HALAMAN (Perhatikan Nama Filenya!) ---
+// --- IMPORT DENGAN NAMA BARU ---
+// Pastikan file di kiri bernama "AdminDatabase.tsx" (bukan Members.tsx)
+import AdminDatabase from './AdminDatabase'; 
+
+// Pastikan file di kiri bernama "MyCard.tsx" (bukan Member.tsx)
+import MyCard from './MyCard';               
+
 import Dashboard from './Dashboard'; 
 import Letters from './Letters';    
 import Finance from './Finance'; 
@@ -13,16 +19,6 @@ import Advocacy from './Advocacy';
 import Counseling from './Counseling';
 import Info from './Info';
 import Profile from './Profile';
-
-// --- IMPORT DINAMIS (Agar tidak Blank jika file salah nama) ---
-// Kita coba import MyCard, kalau tidak ada kita pakai Member
-import MyCard from './MyCard'; 
-// Jika kamu belum rename, ubah baris atas jadi: import MyCard from './Member';
-
-// Kita coba import AdminDatabase, kalau tidak ada kita pakai Members
-import AdminDatabase from './AdminDatabase'; 
-// Jika kamu belum rename, ubah baris atas jadi: import AdminDatabase from './Members';
-
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
@@ -57,6 +53,7 @@ function App() {
 
   return (
     <Routes>
+      {/* Route Login & Register */}
       <Route 
         path="/login" 
         element={!isAuthenticated ? <Login onLogin={handleLogin} /> : <Navigate to="/" replace />} 
@@ -67,16 +64,17 @@ function App() {
         element={!isAuthenticated ? <Register /> : <Navigate to="/" replace />} 
       />
 
+      {/* Route Halaman Utama */}
       <Route 
         path="/" 
         element={isAuthenticated ? <Layout onLogout={handleLogout} userRole={userRole} userName={userName} /> : <Navigate to="/login" replace />}
       >
         <Route index element={<Dashboard />} />
         
-        {/* Halaman Admin */}
+        {/* PENTING: Ini mengarah ke file AdminDatabase.tsx */}
         <Route path="members" element={<AdminDatabase />} />
         
-        {/* Halaman Kartu Saya */}
+        {/* PENTING: Ini mengarah ke file MyCard.tsx */}
         <Route path="my-card" element={<MyCard />} /> 
 
         <Route path="letters" element={<Letters />} />
