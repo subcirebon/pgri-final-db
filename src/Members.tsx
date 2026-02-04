@@ -3,10 +3,10 @@ import { useOutletContext } from 'react-router-dom';
 import { supabase } from './supabaseClient';
 import { 
   Search, Phone, Edit, Trash2, FileSpreadsheet, Loader2, CheckCircle, 
-  Mail, School, CreditCard, User, Calendar, Plus, X 
+  Mail, School, CreditCard, User, Calendar, Plus, X, Users 
 } from 'lucide-react';
 
-// Setup XLSX Aman (Agar tidak blank jika belum install)
+// Setup XLSX Aman
 let XLSX: any;
 try { XLSX = require('xlsx'); } catch (e) { console.warn('Library xlsx missing'); }
 
@@ -27,7 +27,6 @@ interface Member {
 }
 
 const Member = () => {
-  // Ambil Role Admin
   const context = useOutletContext<{ userRole: string }>() || {};
   const isAdmin = (context.userRole === 'super_admin' || context.userRole === 'admin');
 
@@ -35,13 +34,13 @@ const Member = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   
-  // State Modal (Tambah/Edit)
+  // State Modal
   const [showModal, setShowModal] = useState(false);
-  const [formData, setFormData] = useState<any>({}); // Satu state untuk form
+  const [formData, setFormData] = useState<any>({});
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // --- 1. FETCH DATA ---
+  // --- 1. FETCH DATA (DENGAN FILTER ADMIN) ---
   const fetchMembers = async () => {
     setLoading(true);
     const { data, error } = await supabase
@@ -49,8 +48,21 @@ const Member = () => {
       .select('*')
       .order('created_at', { ascending: false });
     
-    if (error) console.error(error);
-    else setMembers(data || []);
+    if (error) {
+      console.error(error);
+    } else {
+      // LOGIKA FILTER: Hapus Super Admin & Sekertaris dari list
+      const filteredData = (data || []).filter(m => {
+        const nameUpper = (m.full_name || '').toUpperCase();
+        // Daftar nama/kata kunci yang TIDAK BOLEH muncul
+        const blackList = ['SUPER ADMIN', 'SEKERTARIS AMIN', 'SEKRETARIS AMIN'];
+        
+        // Return true jika nama TIDAK mengandung kata-kata di blacklist
+        return !blackList.some(b => nameUpper.includes(b));
+      });
+
+      setMembers(filteredData);
+    }
     setLoading(false);
   };
 
@@ -68,14 +80,13 @@ const Member = () => {
     }
   };
 
-  // --- 3. BUKA MODAL ADD/EDIT ---
+  // --- 3. BUKA MODAL ---
   const openModal = (data: Member | null = null) => {
     if (data) {
       setIsEditing(true);
-      setFormData({ ...data }); // Load data lama
+      setFormData({ ...data });
     } else {
       setIsEditing(false);
-      // Reset form kosong
       setFormData({
         full_name: '', nik: '', nip: '', birth_place: '', birth_date: '',
         gender: 'Laki-laki', school_name: '', teacher_type: 'Guru Kelas',
@@ -85,14 +96,13 @@ const Member = () => {
     setShowModal(true);
   };
 
-  // --- 4. SIMPAN DATA (ADD / EDIT) ---
+  // --- 4. SIMPAN DATA ---
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
 
     try {
       if (isEditing) {
-        // UPDATE
         const { error } = await supabase.from('members').update({
           full_name: formData.full_name,
           nip: formData.nip,
@@ -108,13 +118,9 @@ const Member = () => {
         }).eq('id', formData.id);
         if (error) throw error;
       } else {
-        // INSERT BARU (Admin Menambah Manual)
-        // Perlu user_id dummy atau ambil dari auth user saat ini jika diperbolehkan
-        // Note: Idealnya user register sendiri, tapi ini fitur Admin Add Manual
         const { data: { user } } = await supabase.auth.getUser();
-        
         const { error } = await supabase.from('members').insert([{
-          user_id: user?.id, // Link ke admin yang input (atau null jika policy membolehkan)
+          user_id: user?.id,
           full_name: formData.full_name,
           nip: formData.nip,
           nik: formData.nik,
@@ -164,11 +170,15 @@ const Member = () => {
 
   return (
     <div className="space-y-6 animate-in fade-in">
-      {/* Header */}
+      {/* Header & Total Count */}
       <div className="flex flex-col md:flex-row justify-between items-center gap-4">
         <div>
-          <h1 className="text-2xl font-black text-gray-800 uppercase flex items-center gap-2"><User size={28} className="text-red-600"/> Database Anggota</h1>
-          <p className="text-sm text-gray-500">Kelola data lengkap anggota PGRI.</p>
+          <h1 className="text-2xl font-black text-gray-800 uppercase flex items-center gap-2">
+            <User size={28} className="text-red-600"/> Database Anggota
+          </h1>
+          <p className="text-sm text-gray-500 flex items-center gap-2">
+            <Users size={14}/> Total Anggota Terdaftar: <strong className="text-slate-800">{members.length} Orang</strong>
+          </p>
         </div>
         <div className="flex gap-2">
            {isAdmin && <button onClick={() => openModal()} className="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-xl font-bold text-xs uppercase shadow flex gap-2 items-center"><Plus size={16}/> Tambah</button>}
@@ -228,7 +238,7 @@ const Member = () => {
         )}
       </div>
 
-      {/* MODAL INPUT LENGKAP */}
+      {/* MODAL */}
       {showModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-y-auto max-h-[90vh]">
@@ -237,83 +247,26 @@ const Member = () => {
                 <button onClick={() => setShowModal(false)}><X size={20}/></button>
             </div>
             <form onSubmit={handleSave} className="p-6 space-y-3 text-sm">
-               
-               {/* Nama Lengkap */}
-               <div>
-                   <label className="font-bold text-[10px] text-gray-500 uppercase">Nama Lengkap (Gelar)</label>
-                   <input required className="w-full p-2 border rounded font-bold uppercase" value={formData.full_name} onChange={e=>setFormData({...formData, full_name: e.target.value})}/>
-               </div>
-
-               {/* NIK & NIP */}
+               <div><label className="font-bold text-[10px] text-gray-500 uppercase">Nama Lengkap</label><input required className="w-full p-2 border rounded font-bold uppercase" value={formData.full_name} onChange={e=>setFormData({...formData, full_name: e.target.value})}/></div>
                <div className="grid grid-cols-2 gap-3">
-                 <div>
-                     <label className="font-bold text-[10px] text-red-500 uppercase">NIK (Wajib)</label>
-                     <input required minLength={16} type="number" className="w-full p-2 border rounded bg-red-50" value={formData.nik} onChange={e=>setFormData({...formData, nik: e.target.value})}/>
-                 </div>
-                 <div>
-                     <label className="font-bold text-[10px] text-gray-500 uppercase">NIP (Opsional)</label>
-                     <input type="number" className="w-full p-2 border rounded" value={formData.nip} onChange={e=>setFormData({...formData, nip: e.target.value})}/>
-                 </div>
+                 <div><label className="font-bold text-[10px] text-red-500 uppercase">NIK (Wajib)</label><input required minLength={16} type="number" className="w-full p-2 border rounded bg-red-50" value={formData.nik} onChange={e=>setFormData({...formData, nik: e.target.value})}/></div>
+                 <div><label className="font-bold text-[10px] text-gray-500 uppercase">NIP</label><input type="number" className="w-full p-2 border rounded" value={formData.nip} onChange={e=>setFormData({...formData, nip: e.target.value})}/></div>
                </div>
-
-               {/* TTL & Gender */}
                <div className="grid grid-cols-3 gap-3">
-                 <div>
-                     <label className="font-bold text-[10px] text-gray-500 uppercase">Tempat Lahir</label>
-                     <input className="w-full p-2 border rounded" value={formData.birth_place} onChange={e=>setFormData({...formData, birth_place: e.target.value})}/>
-                 </div>
-                 <div>
-                     <label className="font-bold text-[10px] text-gray-500 uppercase">Tgl Lahir</label>
-                     <input type="date" className="w-full p-2 border rounded" value={formData.birth_date} onChange={e=>setFormData({...formData, birth_date: e.target.value})}/>
-                 </div>
-                 <div>
-                     <label className="font-bold text-[10px] text-gray-500 uppercase">Gender</label>
-                     <select className="w-full p-2 border rounded" value={formData.gender} onChange={e=>setFormData({...formData, gender: e.target.value})}>
-                         <option>Laki-laki</option><option>Perempuan</option>
-                     </select>
-                 </div>
+                 <div><label className="font-bold text-[10px] text-gray-500 uppercase">Tempat Lahir</label><input className="w-full p-2 border rounded" value={formData.birth_place} onChange={e=>setFormData({...formData, birth_place: e.target.value})}/></div>
+                 <div><label className="font-bold text-[10px] text-gray-500 uppercase">Tgl Lahir</label><input type="date" className="w-full p-2 border rounded" value={formData.birth_date} onChange={e=>setFormData({...formData, birth_date: e.target.value})}/></div>
+                 <div><label className="font-bold text-[10px] text-gray-500 uppercase">Gender</label><select className="w-full p-2 border rounded" value={formData.gender} onChange={e=>setFormData({...formData, gender: e.target.value})}><option>Laki-laki</option><option>Perempuan</option></select></div>
                </div>
-
-               {/* Sekolah & Jabatan */}
                <div className="grid grid-cols-2 gap-3">
-                 <div>
-                     <label className="font-bold text-[10px] text-gray-500 uppercase">Unit Kerja</label>
-                     <input required className="w-full p-2 border rounded uppercase" value={formData.school_name} onChange={e=>setFormData({...formData, school_name: e.target.value})}/>
-                 </div>
-                 <div>
-                     <label className="font-bold text-[10px] text-gray-500 uppercase">Jenis Guru</label>
-                     <select className="w-full p-2 border rounded" value={formData.teacher_type} onChange={e=>setFormData({...formData, teacher_type: e.target.value})}>
-                         <option>Guru Kelas</option><option>Guru Mapel</option><option>Guru Agama</option><option>Guru PJOK</option><option>Kepala Sekolah</option><option>Penjaga Sekolah</option><option>Operator</option>
-                     </select>
-                 </div>
+                 <div><label className="font-bold text-[10px] text-gray-500 uppercase">Unit Kerja</label><input required className="w-full p-2 border rounded uppercase" value={formData.school_name} onChange={e=>setFormData({...formData, school_name: e.target.value})}/></div>
+                 <div><label className="font-bold text-[10px] text-gray-500 uppercase">Jenis Guru</label><select className="w-full p-2 border rounded" value={formData.teacher_type} onChange={e=>setFormData({...formData, teacher_type: e.target.value})}><option>Guru Kelas</option><option>Guru Mapel</option><option>Guru Agama</option><option>Guru PJOK</option><option>Kepala Sekolah</option><option>Penjaga Sekolah</option><option>Operator</option></select></div>
                </div>
-
-               {/* Kontak */}
                <div className="grid grid-cols-2 gap-3">
-                 <div>
-                     <label className="font-bold text-[10px] text-gray-500 uppercase">No HP (WA)</label>
-                     <input required type="number" className="w-full p-2 border rounded" value={formData.phone} onChange={e=>setFormData({...formData, phone: e.target.value})}/>
-                 </div>
-                 <div>
-                     <label className="font-bold text-[10px] text-gray-500 uppercase">Email</label>
-                     <input type="email" className="w-full p-2 border rounded" value={formData.email} onChange={e=>setFormData({...formData, email: e.target.value})}/>
-                 </div>
+                 <div><label className="font-bold text-[10px] text-gray-500 uppercase">No HP</label><input required type="number" className="w-full p-2 border rounded" value={formData.phone} onChange={e=>setFormData({...formData, phone: e.target.value})}/></div>
+                 <div><label className="font-bold text-[10px] text-gray-500 uppercase">Email</label><input type="email" className="w-full p-2 border rounded" value={formData.email} onChange={e=>setFormData({...formData, email: e.target.value})}/></div>
                </div>
-
-               {/* Status */}
-               <div>
-                   <label className="font-bold text-[10px] text-gray-500 uppercase">Status Keanggotaan</label>
-                   <select className="w-full p-2 border rounded" value={formData.status} onChange={e=>setFormData({...formData, status: e.target.value})}>
-                       <option value="Active">Active (Aktif)</option>
-                       <option value="PNS">PNS</option>
-                       <option value="PPPK">PPPK</option>
-                       <option value="Honorer">Honorer</option>
-                   </select>
-               </div>
-
-               <button type="submit" disabled={saving} className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold uppercase text-xs mt-2 hover:bg-blue-700 shadow-lg transition-all">
-                   {saving ? 'Menyimpan...' : 'Simpan Data'}
-               </button>
+               <div><label className="font-bold text-[10px] text-gray-500 uppercase">Status</label><select className="w-full p-2 border rounded" value={formData.status} onChange={e=>setFormData({...formData, status: e.target.value})}><option value="Active">Active</option><option value="PNS">PNS</option><option value="PPPK">PPPK</option><option value="Honorer">Honorer</option></select></div>
+               <button type="submit" disabled={saving} className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold uppercase text-xs mt-2">{saving ? 'Menyimpan...' : 'Simpan'}</button>
             </form>
           </div>
         </div>
