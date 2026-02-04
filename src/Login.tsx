@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { supabase } from './supabaseClient';
-import { Link } from 'react-router-dom'; // 1. Import Link
-import { LogIn, Loader2, AlertCircle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom'; // Pakai useNavigate
+import { LogIn, Loader2, AlertCircle, UserPlus } from 'lucide-react';
 
 interface LoginProps {
   onLogin: (role: string, name: string, id: string) => void;
 }
 
 const Login = ({ onLogin }: LoginProps) => {
+  const navigate = useNavigate(); // Hook untuk pindah halaman
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -25,7 +26,7 @@ const Login = ({ onLogin }: LoginProps) => {
         return;
       }
 
-      // 2. Cek ke Database Supabase (Tabel Members)
+      // 2. Cek Database
       const { data, error } = await supabase
         .from('members')
         .select('*')
@@ -43,7 +44,7 @@ const Login = ({ onLogin }: LoginProps) => {
 
       // 3. Login Berhasil
       const role = data.role || 'user'; 
-      onLogin(role, data.full_name || data.name, data.id); // Sesuaikan field nama
+      onLogin(role, data.full_name || data.name, data.id); 
 
     } catch (err: any) {
       setErrorMsg(err.message);
@@ -54,25 +55,32 @@ const Login = ({ onLogin }: LoginProps) => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-red-900 to-red-800 flex items-center justify-center p-4">
-      <div className="bg-white rounded-[32px] shadow-2xl w-full max-w-sm p-8 animate-in zoom-in duration-300">
+      <div className="bg-white rounded-[32px] shadow-2xl w-full max-w-sm p-8 animate-in zoom-in duration-300 relative z-10">
         
+        {/* Header Logo */}
         <div className="text-center mb-8">
           <div className="w-20 h-20 bg-gray-100 rounded-full mx-auto mb-4 flex items-center justify-center shadow-inner">
-             <img src="/logo-pgri.png" alt="PGRI" className="w-12 h-12 object-contain" onError={(e) => (e.currentTarget.src = 'https://upload.wikimedia.org/wikipedia/commons/8/89/Lambang_PGRI.svg')}/>
+             {/* Ganti src dengan '/logo-pgri.png' jika sudah ada di folder public */}
+             <img 
+               src="https://upload.wikimedia.org/wikipedia/commons/8/89/Lambang_PGRI.svg" 
+               alt="PGRI" 
+               className="w-12 h-12 object-contain"
+             />
           </div>
           <h1 className="text-2xl font-black text-gray-800 uppercase italic tracking-tighter">PGRI RANTING KALIJAGA</h1>
           <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Sistem Informasi & Administrasi</p>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-5">
+        {/* Form Login */}
+        <form onSubmit={handleLogin} className="space-y-5 relative z-20">
           {errorMsg && (
-            <div className="bg-red-50 text-red-600 p-3 rounded-xl text-xs font-bold flex items-center gap-2">
+            <div className="bg-red-50 text-red-600 p-3 rounded-xl text-xs font-bold flex items-center gap-2 animate-pulse">
               <AlertCircle size={16}/> {errorMsg}
             </div>
           )}
 
           <div>
-            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1 ml-1">Akses Username</label>
+            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1 ml-1">Username</label>
             <input 
               type="text" 
               required
@@ -98,23 +106,26 @@ const Login = ({ onLogin }: LoginProps) => {
           <button 
             type="submit" 
             disabled={loading}
-            className="w-full bg-red-800 hover:bg-red-900 text-white py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl flex justify-center items-center gap-2 transition-all hover:scale-[1.02] disabled:opacity-50 disabled:scale-100"
+            className="w-full bg-red-800 hover:bg-red-900 text-white py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl flex justify-center items-center gap-2 transition-all hover:scale-[1.02] disabled:opacity-50 disabled:scale-100 cursor-pointer relative z-30"
           >
             {loading ? <Loader2 className="animate-spin" /> : <><LogIn size={18} /> Masuk Sistem</>}
           </button>
         </form>
 
-        {/* --- BAGIAN INI DIPERBAIKI --- */}
-        <div className="mt-8 text-center pt-6 border-t border-gray-100">
-          <p className="text-[10px] text-gray-400 font-bold uppercase mb-2">
-            Belum punya akun?
+        {/* --- BAGIAN TOMBOL DAFTAR (DIPERBAIKI) --- */}
+        <div className="mt-8 text-center pt-6 border-t border-gray-100 relative z-30">
+          <p className="text-[10px] text-gray-400 font-bold uppercase mb-3">
+            Belum terdaftar sebagai anggota?
           </p>
-          <Link 
-            to="/register" 
-            className="inline-block px-4 py-2 bg-gray-100 text-red-800 rounded-lg text-xs font-black uppercase tracking-wider hover:bg-red-50 hover:text-red-900 transition-colors"
+          
+          {/* Menggunakan Button + onClick navigate (Lebih Kuat daripada Link) */}
+          <button 
+            type="button"
+            onClick={() => navigate('/register')}
+            className="w-full py-3 bg-gray-100 hover:bg-red-50 text-gray-600 hover:text-red-700 rounded-xl font-black uppercase text-xs tracking-widest transition-colors flex items-center justify-center gap-2 cursor-pointer border border-transparent hover:border-red-200"
           >
-            Daftar Disini
-          </Link>
+            <UserPlus size={16}/> Daftar Akun Baru
+          </button>
         </div>
 
       </div>
