@@ -4,7 +4,11 @@ import Layout from './Layout';
 import Login from './Login';
 import Register from './Register'; 
 
-// --- IMPORT HALAMAN (Perhatikan Nama Filenya!) ---
+// --- IMPORT FILE SESUAI NAMA YANG KAMU UBAH ---
+import AdminDatabase from './AdminDatabase'; // Pastikan file AdminDatabase.tsx ada
+import MyCard from './MyCard';               // Pastikan file MyCard.tsx ada
+
+// --- Import Halaman Lain ---
 import Dashboard from './Dashboard'; 
 import Letters from './Letters';    
 import Finance from './Finance'; 
@@ -13,16 +17,6 @@ import Advocacy from './Advocacy';
 import Counseling from './Counseling';
 import Info from './Info';
 import Profile from './Profile';
-
-// --- IMPORT DINAMIS (Agar tidak Blank jika file salah nama) ---
-// Kita coba import MyCard, kalau tidak ada kita pakai Member
-import MyCard from './MyCard'; 
-// Jika kamu belum rename, ubah baris atas jadi: import MyCard from './Member';
-
-// Kita coba import AdminDatabase, kalau tidak ada kita pakai Members
-import AdminDatabase from './AdminDatabase'; 
-// Jika kamu belum rename, ubah baris atas jadi: import AdminDatabase from './Members';
-
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
@@ -56,6 +50,7 @@ function App() {
   };
 
   return (
+    // JANGAN PAKAI <BrowserRouter> DISINI LAGI (Sudah ada di main.tsx)
     <Routes>
       <Route 
         path="/login" 
@@ -73,10 +68,10 @@ function App() {
       >
         <Route index element={<Dashboard />} />
         
-        {/* Halaman Admin */}
+        {/* Rute ke Halaman Admin */}
         <Route path="members" element={<AdminDatabase />} />
         
-        {/* Halaman Kartu Saya */}
+        {/* Rute ke Halaman Kartu Saya */}
         <Route path="my-card" element={<MyCard />} /> 
 
         <Route path="letters" element={<Letters />} />
