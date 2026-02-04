@@ -3,7 +3,7 @@ import { useOutletContext } from 'react-router-dom';
 import { supabase } from './supabaseClient';
 import { 
   Shield, Scale, AlertTriangle, FileText, CheckCircle, Clock, 
-  Phone, Send, X, AlertCircle, Upload, Edit, Image, Video, Loader2, Lock, EyeOff, Plus, Trash2 
+  Phone, Send, X, AlertCircle, Upload, Edit, Image, Video, Loader2, Lock, EyeOff, Plus, Trash2, Download 
 } from 'lucide-react';
 
 const Advocacy = () => {
@@ -12,43 +12,47 @@ const Advocacy = () => {
 
   // --- STATE ---
   const [myCases, setMyCases] = useState<any[]>([]);
-  const [articles, setArticles] = useState<any[]>([]); // State untuk Literasi Hukum
+  const [articles, setArticles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
 
   // Modals
   const [showReportModal, setShowReportModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [showArticleModal, setShowArticleModal] = useState<any>(null); // Untuk Baca
-  const [showArticleForm, setShowArticleForm] = useState(false); // Untuk Tambah/Edit Artikel
+  const [showArticleModal, setShowArticleModal] = useState<any>(null); 
+  const [showArticleForm, setShowArticleForm] = useState(false); 
 
-  // Form Data Laporan & Edit Kasus (Sama seperti sebelumnya)
+  // Form Data Laporan
   const [formData, setFormData] = useState({
     name: userName || '', nip: '', category: 'Perundungan / Bullying', chronology: '', evidenceFile: null as File | null
   });
+
+  // Form Edit Kasus
   const [editData, setEditData] = useState({
     id: 0, status: '', progress: '', newEvidence: null as File | null
   });
 
-  // Form Data Artikel (Baru)
+  // Form Data Artikel (Updated: Tambah pdfFile)
   const [articleForm, setArticleForm] = useState({
     id: null as number | null,
     title: '',
     description: '',
     content: '',
-    icon_type: 'file' // Default icon
+    icon_type: 'file',
+    pdfFile: null as File | null, // File baru yang akan diupload
+    currentPdfUrl: '' // URL yang sudah ada di database
   });
 
   // --- FETCH DATA ---
   const fetchData = async () => {
     setLoading(true);
     
-    // 1. Fetch Kasus
+    // Fetch Kasus
     let queryCases = supabase.from('advocacy').select('*').order('created_at', { ascending: false });
     const { data: casesData } = await queryCases;
     if (casesData) setMyCases(casesData);
 
-    // 2. Fetch Artikel Literasi
+    // Fetch Artikel
     const { data: articlesData } = await supabase.from('legal_literacy').select('*').order('id', { ascending: true });
     if (articlesData) setArticles(articlesData);
 
@@ -67,7 +71,6 @@ const Advocacy = () => {
     return `${parts[0]} ${'*'.repeat(5)}`; 
   };
 
-  // Helper Icon Mapper
   const getIcon = (type: string, className: string) => {
     switch (type) {
       case 'shield': return <Shield className={className} />;
@@ -77,7 +80,9 @@ const Advocacy = () => {
     }
   };
 
-  // --- ACTIONS LAPORAN & KASUS (Sama seperti kode sebelumnya) ---
+  // --- ACTIONS UPLOAD ---
+  // Kita gunakan bucket yang sama 'case-evidence' agar praktis (sudah di-setting permissionnya)
+  // Atau idealnya buat bucket baru 'documents', tapi 'case-evidence' juga bisa dipakai.
   const handleUpload = async (file: File) => {
     const fileName = `${Date.now()}-${file.name.replace(/\s/g, '_')}`;
     const { error } = await supabase.storage.from('case-evidence').upload(fileName, file);
@@ -86,6 +91,7 @@ const Advocacy = () => {
     return data.publicUrl;
   };
 
+  // --- ACTIONS LAPORAN & KASUS ---
   const handleSubmitReport = async (e: React.FormEvent) => {
     e.preventDefault();
     setUploading(true);
@@ -121,23 +127,36 @@ const Advocacy = () => {
     } catch (err: any) { alert('Gagal update: ' + err.message); } finally { setUploading(false); }
   };
 
-  // --- ACTIONS ARTIKEL LITERASI (BARU) ---
+  // --- ACTIONS ARTIKEL LITERASI ---
   const handleSaveArticle = async (e: React.FormEvent) => {
     e.preventDefault();
     setUploading(true);
     try {
+      let pdfUrl = articleForm.currentPdfUrl; // Default: pakai URL lama
+      
+      // Jika ada file PDF baru diupload
+      if (articleForm.pdfFile) {
+        pdfUrl = await handleUpload(articleForm.pdfFile);
+      }
+
       if (articleForm.id) {
-        // Update Existing
+        // Update
         const { error } = await supabase.from('legal_literacy').update({
-          title: articleForm.title, description: articleForm.description,
-          content: articleForm.content, icon_type: articleForm.icon_type
+          title: articleForm.title, 
+          description: articleForm.description,
+          content: articleForm.content, 
+          icon_type: articleForm.icon_type,
+          pdf_url: pdfUrl // Simpan URL PDF
         }).eq('id', articleForm.id);
         if (error) throw error;
       } else {
-        // Create New
+        // Create
         const { error } = await supabase.from('legal_literacy').insert([{
-          title: articleForm.title, description: articleForm.description,
-          content: articleForm.content, icon_type: articleForm.icon_type
+          title: articleForm.title, 
+          description: articleForm.description,
+          content: articleForm.content, 
+          icon_type: articleForm.icon_type,
+          pdf_url: pdfUrl // Simpan URL PDF
         }]);
         if (error) throw error;
       }
@@ -163,19 +182,20 @@ const Advocacy = () => {
   const openEditArticle = (item: any) => {
     setArticleForm({
       id: item.id, title: item.title, description: item.description,
-      content: item.content, icon_type: item.icon_type
+      content: item.content, icon_type: item.icon_type,
+      pdfFile: null,
+      currentPdfUrl: item.pdf_url || '' // Load URL PDF yang ada
     });
     setShowArticleForm(true);
   };
 
   const openAddArticle = () => {
     setArticleForm({
-      id: null, title: '', description: '', content: '', icon_type: 'file'
+      id: null, title: '', description: '', content: '', icon_type: 'file', pdfFile: null, currentPdfUrl: ''
     });
     setShowArticleForm(true);
   };
 
-  // Status Badge Helper
   const getStatusBadge = (status: string) => {
     switch(status) {
       case 'Selesai': return 'bg-green-100 text-green-700 border-green-200';
@@ -187,7 +207,7 @@ const Advocacy = () => {
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       
-      {/* HEADER HERO */}
+      {/* HEADER HERO (Sama) */}
       <div className="bg-gradient-to-r from-slate-800 to-slate-900 rounded-[32px] p-8 text-white shadow-xl relative overflow-hidden">
         <div className="absolute top-0 right-0 opacity-10 -mr-10 -mt-10"><Scale size={200} /></div>
         <div className="relative z-10 max-w-2xl">
@@ -205,7 +225,7 @@ const Advocacy = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* KOLOM KIRI: STATUS PENGADUAN */}
+        {/* KOLOM KIRI: STATUS PENGADUAN (Sama) */}
         <div className="lg:col-span-2 space-y-6">
           <div className="flex items-center gap-2 mb-2"><Scale className="text-slate-700" /><h2 className="text-xl font-bold text-gray-800 uppercase">Status Pengaduan</h2></div>
 
@@ -290,13 +310,13 @@ const Advocacy = () => {
           </div>
         </div>
 
-        {/* KOLOM KANAN: LITERASI HUKUM (DINAMIS) */}
+        {/* KOLOM KANAN: LITERASI HUKUM (UPDATE: Tombol Plus) */}
         <div>
           <div className="bg-white rounded-[32px] shadow-sm border border-gray-100 p-6 sticky top-6">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-bold text-gray-800 flex items-center gap-2 uppercase text-sm"><FileText size={18} className="text-slate-600"/> Literasi Hukum</h3>
               {isAdmin && (
-                <button onClick={openAddArticle} className="bg-slate-800 text-white p-1.5 rounded-lg hover:bg-slate-700 transition-colors" title="Tambah Artikel">
+                <button onClick={openAddArticle} className="bg-slate-800 text-white p-1.5 rounded-lg hover:bg-slate-700 transition-colors shadow-lg hover:shadow-xl transform hover:scale-105" title="Tambah Artikel">
                   <Plus size={14} />
                 </button>
               )}
@@ -316,10 +336,12 @@ const Advocacy = () => {
                         {art.title}
                       </h4>
                       <p className="text-[10px] text-gray-500 line-clamp-2">{art.description}</p>
+                      {/* Indikator PDF kecil jika ada */}
+                      {art.pdf_url && <span className="mt-1 inline-flex items-center gap-1 text-[9px] text-red-500 font-bold bg-red-50 px-1.5 py-0.5 rounded border border-red-100">PDF Available</span>}
                     </div>
                   </div>
 
-                  {/* Tombol Edit/Delete Admin (Floating saat hover) */}
+                  {/* Tombol Edit/Delete Admin */}
                   {isAdmin && (
                     <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 backdrop-blur-sm rounded-lg p-1 shadow-sm">
                       <button onClick={(e) => { e.stopPropagation(); openEditArticle(art); }} className="p-1 text-blue-600 hover:bg-blue-50 rounded"><Edit size={12}/></button>
@@ -349,13 +371,13 @@ const Advocacy = () => {
       {showReportModal && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in zoom-in">
           <div className="bg-white rounded-[32px] w-full max-w-lg shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
+             {/* Isi Form Sama */}
             <div className="bg-slate-800 p-6 flex justify-between items-center text-white">
               <h3 className="font-black text-lg flex items-center gap-2 uppercase italic"><AlertTriangle size={20} className="text-yellow-400"/> Form Pengaduan</h3>
               <button onClick={() => setShowReportModal(false)} className="text-slate-400 hover:text-white"><X size={24} /></button>
             </div>
             <form onSubmit={handleSubmitReport} className="p-8 space-y-4">
-               {/* Form Fields Sama... */}
-               <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-[10px] font-bold uppercase text-gray-500 mb-1">Nama Pelapor</label><input required className="w-full p-3 border-2 border-gray-100 rounded-xl font-bold text-sm focus:border-slate-800 outline-none" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} /></div>
                 <div><label className="block text-[10px] font-bold uppercase text-gray-500 mb-1">NIP / Identitas</label><input required className="w-full p-3 border-2 border-gray-100 rounded-xl font-bold text-sm focus:border-slate-800 outline-none" value={formData.nip} onChange={e => setFormData({...formData, nip: e.target.value})} /></div>
               </div>
@@ -390,7 +412,7 @@ const Advocacy = () => {
       {showEditModal && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-[32px] w-full max-w-md shadow-2xl overflow-hidden">
-             {/* Isi Form Edit Sama seperti sebelumnya... */}
+             {/* Isi Form Edit Sama */}
             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
               <h3 className="font-black uppercase italic text-gray-800">Update Penanganan</h3>
               <button onClick={() => setShowEditModal(false)}><X size={20} className="text-gray-400" /></button>
@@ -425,7 +447,7 @@ const Advocacy = () => {
         </div>
       )}
 
-      {/* --- MODAL 3: BACA ARTIKEL --- */}
+      {/* --- MODAL 3: BACA ARTIKEL (UPDATE: Tombol Download PDF) --- */}
       {showArticleModal && (
         <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4 backdrop-blur-sm animate-in zoom-in">
           <div className="bg-white rounded-[32px] w-full max-w-2xl shadow-2xl overflow-hidden max-h-[80vh] flex flex-col">
@@ -438,11 +460,32 @@ const Advocacy = () => {
               </div>
               <button onClick={() => setShowArticleModal(null)} className="text-gray-400 hover:text-red-600"><X size={24} /></button>
             </div>
-            <div className="p-8 overflow-y-auto bg-white">
+            <div className="p-8 overflow-y-auto bg-white flex-1">
               <div className="prose prose-slate max-w-none text-gray-600 whitespace-pre-line leading-relaxed font-medium">
                 {showArticleModal.content}
               </div>
+              
+              {/* TOMBOL LIHAT PDF */}
+              {showArticleModal.pdf_url && (
+                <div className="mt-8 pt-6 border-t border-gray-100">
+                  <h4 className="text-[10px] font-bold text-slate-400 uppercase mb-3">Dokumen Lampiran</h4>
+                  <a 
+                    href={showArticleModal.pdf_url} 
+                    target="_blank" 
+                    rel="noreferrer" 
+                    className="flex items-center gap-3 bg-red-50 border border-red-100 p-4 rounded-xl hover:bg-red-100 transition-colors group"
+                  >
+                    <div className="bg-red-600 text-white p-2 rounded-lg group-hover:scale-110 transition-transform"><FileText size={20} /></div>
+                    <div>
+                      <p className="font-bold text-red-700 text-sm group-hover:underline">Buka Dokumen PDF Asli</p>
+                      <p className="text-[10px] text-red-400">Klik untuk membaca atau mengunduh</p>
+                    </div>
+                    <Download size={18} className="ml-auto text-red-300 group-hover:text-red-600" />
+                  </a>
+                </div>
+              )}
             </div>
+            
             <div className="p-6 border-t border-gray-100 bg-gray-50 text-right">
               <button onClick={() => setShowArticleModal(null)} className="px-8 py-3 bg-slate-800 text-white rounded-xl font-black uppercase text-xs tracking-widest hover:bg-slate-900 shadow-lg">Tutup</button>
             </div>
@@ -450,10 +493,10 @@ const Advocacy = () => {
         </div>
       )}
 
-      {/* --- MODAL 4: TAMBAH/EDIT ARTIKEL (KHUSUS ADMIN) --- */}
+      {/* --- MODAL 4: TAMBAH/EDIT ARTIKEL (UPDATE: Upload PDF) --- */}
       {showArticleForm && (
         <div className="fixed inset-0 bg-black/70 z-[70] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-[32px] w-full max-w-md shadow-2xl overflow-hidden">
+          <div className="bg-white rounded-[32px] w-full max-w-md shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
               <h3 className="font-black uppercase italic text-gray-800">{articleForm.id ? 'Edit Materi' : 'Tambah Materi Baru'}</h3>
               <button onClick={() => setShowArticleForm(false)}><X size={20} className="text-gray-400" /></button>
@@ -468,9 +511,24 @@ const Advocacy = () => {
                 <input required className="w-full p-3 border-2 border-gray-100 rounded-xl font-medium text-sm outline-none focus:border-slate-800" value={articleForm.description} onChange={e => setArticleForm({...articleForm, description: e.target.value})} />
               </div>
               <div>
-                <label className="block text-[10px] font-bold uppercase text-gray-500 mb-1">Isi Lengkap</label>
+                <label className="block text-[10px] font-bold uppercase text-gray-500 mb-1">Isi Lengkap / Ringkasan</label>
                 <textarea required rows={6} className="w-full p-3 border-2 border-gray-100 rounded-xl font-medium text-sm outline-none focus:border-slate-800" value={articleForm.content} onChange={e => setArticleForm({...articleForm, content: e.target.value})} />
               </div>
+              
+              {/* INPUT UPLOAD PDF */}
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-gray-500 mb-1">Upload File PDF (Opsional)</label>
+                <div className="border border-gray-200 rounded-xl p-3 bg-gray-50 flex items-center gap-3 relative hover:bg-white hover:border-blue-200 transition-all">
+                  <input type="file" accept="application/pdf" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e => setArticleForm({...articleForm, pdfFile: e.target.files ? e.target.files[0] : null})} />
+                  <div className="bg-red-100 p-2 rounded-lg text-red-600"><FileText size={16} /></div>
+                  <div className="overflow-hidden">
+                     <span className="text-xs font-bold text-gray-500 truncate block">
+                        {articleForm.pdfFile ? articleForm.pdfFile.name : (articleForm.currentPdfUrl ? 'File PDF Sudah Ada (Upload untuk ganti)' : 'Pilih File PDF...')}
+                     </span>
+                  </div>
+                </div>
+              </div>
+
               <div>
                 <label className="block text-[10px] font-bold uppercase text-gray-500 mb-1">Pilih Ikon</label>
                 <select className="w-full p-3 border-2 border-gray-100 rounded-xl font-bold text-sm bg-white outline-none focus:border-slate-800" value={articleForm.icon_type} onChange={e => setArticleForm({...articleForm, icon_type: e.target.value})}>
