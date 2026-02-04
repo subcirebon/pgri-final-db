@@ -40,7 +40,7 @@ const Member = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // --- 1. FETCH DATA (DENGAN FILTER ADMIN) ---
+  // --- 1. FETCH DATA (DENGAN FILTER KUAT) ---
   const fetchMembers = async () => {
     setLoading(true);
     const { data, error } = await supabase
@@ -51,14 +51,24 @@ const Member = () => {
     if (error) {
       console.error(error);
     } else {
-      // LOGIKA FILTER: Hapus Super Admin & Sekertaris dari list
+      // LOGIKA FILTER UPDATE:
+      // Menyaring semua yang mengandung kata "SUPER ADMIN" atau "SEKRETARIS"
       const filteredData = (data || []).filter(m => {
         const nameUpper = (m.full_name || '').toUpperCase();
-        // Daftar nama/kata kunci yang TIDAK BOLEH muncul
-        const blackList = ['SUPER ADMIN', 'SEKERTARIS AMIN', 'SEKRETARIS AMIN'];
         
-        // Return true jika nama TIDAK mengandung kata-kata di blacklist
-        return !blackList.some(b => nameUpper.includes(b));
+        // Cek apakah nama mengandung salah satu kata terlarang ini
+        // Kita pakai kata kunci yang lebih umum agar variasi typo tetap kena filter
+        const blackListKeywords = [
+            'SUPER ADMIN', 
+            'SEKRETARIS ADMIN', 
+            'SEKERTARIS ADMIN', // Typo umum
+            'SEKRETARIS AMIN',
+            'SEKERTARIS AMIN',
+            'ADMINISTRATOR'
+        ];
+        
+        // Return true jika TIDAK mengandung kata-kata di atas
+        return !blackListKeywords.some(keyword => nameUpper.includes(keyword));
       });
 
       setMembers(filteredData);
