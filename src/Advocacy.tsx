@@ -3,75 +3,81 @@ import { useOutletContext } from 'react-router-dom';
 import { supabase } from './supabaseClient';
 import { 
   Shield, Scale, AlertTriangle, FileText, CheckCircle, Clock, 
-  Phone, Send, X, AlertCircle, Upload, Edit, Image, Video, Loader2, Lock, EyeOff 
+  Phone, Send, X, AlertCircle, Upload, Edit, Image, Video, Loader2, Lock, EyeOff, Plus, Trash2 
 } from 'lucide-react';
 
 const Advocacy = () => {
   const { userRole, userName } = useOutletContext<{ userRole: string, userName: string }>();
-  // Admin: role super_admin atau admin
   const isAdmin = userRole === 'super_admin' || userRole === 'admin';
 
-  // --- 1. DATA LITERASI HUKUM ---
-  const legalArticles = [
-    {
-      id: 1,
-      title: "Perlindungan Profesi Guru (Permendikbud No. 10 Tahun 2017)",
-      desc: "Guru berhak mendapatkan perlindungan hukum, profesi, keselamatan dan kesehatan kerja.",
-      icon: <Shield className="text-blue-600" />,
-      content: `PERMENDIKBUD NO. 10 TAHUN 2017...\n(Isi disingkat agar kode lebih pendek)`
-    },
-    // ... item lainnya sama seperti sebelumnya
-  ];
-
-  // --- 2. STATE ---
+  // --- STATE ---
   const [myCases, setMyCases] = useState<any[]>([]);
+  const [articles, setArticles] = useState<any[]>([]); // State untuk Literasi Hukum
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+
+  // Modals
   const [showReportModal, setShowReportModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [showArticleModal, setShowArticleModal] = useState<any>(null);
+  const [showArticleModal, setShowArticleModal] = useState<any>(null); // Untuk Baca
+  const [showArticleForm, setShowArticleForm] = useState(false); // Untuk Tambah/Edit Artikel
 
-  // Form Lapor
+  // Form Data Laporan & Edit Kasus (Sama seperti sebelumnya)
   const [formData, setFormData] = useState({
     name: userName || '', nip: '', category: 'Perundungan / Bullying', chronology: '', evidenceFile: null as File | null
   });
-
-  // Form Edit Admin
   const [editData, setEditData] = useState({
     id: 0, status: '', progress: '', newEvidence: null as File | null
   });
 
-  // --- 3. FETCH DATA ---
-  const fetchCases = async () => {
-    setLoading(true);
-    // Kita ambil semua data dulu, nanti difilter tampilan di UI
-    // (Idealnya RLS di backend, tapi untuk logic frontend kita filter di render)
-    let query = supabase.from('advocacy').select('*').order('created_at', { ascending: false });
-    
-    // Jika user biasa, Supabase RLS sebaiknya sudah membatasi. 
-    // Tapi di sini kita load semua agar Public bisa melihat status (tapi disamarkan)
-    // Jika kamu ingin User Biasa HANYA melihat kasus dia sendiri, uncomment baris bawah:
-    // if (!isAdmin) query = query.eq('reporter_name', userName);
+  // Form Data Artikel (Baru)
+  const [articleForm, setArticleForm] = useState({
+    id: null as number | null,
+    title: '',
+    description: '',
+    content: '',
+    icon_type: 'file' // Default icon
+  });
 
-    const { data, error } = await query;
-    if (!error) setMyCases(data || []);
+  // --- FETCH DATA ---
+  const fetchData = async () => {
+    setLoading(true);
+    
+    // 1. Fetch Kasus
+    let queryCases = supabase.from('advocacy').select('*').order('created_at', { ascending: false });
+    const { data: casesData } = await queryCases;
+    if (casesData) setMyCases(casesData);
+
+    // 2. Fetch Artikel Literasi
+    const { data: articlesData } = await supabase.from('legal_literacy').select('*').order('id', { ascending: true });
+    if (articlesData) setArticles(articlesData);
+
     setLoading(false);
   };
 
   useEffect(() => {
-    fetchCases();
+    fetchData();
   }, [isAdmin, userName]);
 
-  // --- 4. UTILS: PENYAMARAN NAMA ---
+  // --- UTILS ---
   const maskName = (fullName: string) => {
     if (!fullName) return 'Anonim';
     const parts = fullName.split(' ');
-    // Tampilkan kata pertama saja, sisanya bintang
     if (parts.length === 1) return parts[0].substring(0, 3) + '***'; 
     return `${parts[0]} ${'*'.repeat(5)}`; 
   };
 
-  // --- 5. HANDLE UPLOAD ---
+  // Helper Icon Mapper
+  const getIcon = (type: string, className: string) => {
+    switch (type) {
+      case 'shield': return <Shield className={className} />;
+      case 'scale': return <Scale className={className} />;
+      case 'alert': return <AlertTriangle className={className} />;
+      default: return <FileText className={className} />;
+    }
+  };
+
+  // --- ACTIONS LAPORAN & KASUS (Sama seperti kode sebelumnya) ---
   const handleUpload = async (file: File) => {
     const fileName = `${Date.now()}-${file.name.replace(/\s/g, '_')}`;
     const { error } = await supabase.storage.from('case-evidence').upload(fileName, file);
@@ -80,75 +86,96 @@ const Advocacy = () => {
     return data.publicUrl;
   };
 
-  // --- 6. SUBMIT LAPORAN ---
   const handleSubmitReport = async (e: React.FormEvent) => {
     e.preventDefault();
     setUploading(true);
     try {
       let evidenceUrl = '';
-      if (formData.evidenceFile) {
-        evidenceUrl = await handleUpload(formData.evidenceFile);
-      }
-
+      if (formData.evidenceFile) evidenceUrl = await handleUpload(formData.evidenceFile);
       const { error } = await supabase.from('advocacy').insert([{
-        reporter_name: formData.name,
-        reporter_nip: formData.nip,
-        category: formData.category,
-        description: formData.chronology,
-        status: 'Menunggu Respon',
-        progress_notes: 'Laporan baru diterima sistem.',
-        evidence_url: evidenceUrl, // Bukti Pelapor masuk sini
-        created_at: new Date().toISOString()
+        reporter_name: formData.name, reporter_nip: formData.nip, category: formData.category,
+        description: formData.chronology, status: 'Menunggu Respon', progress_notes: 'Laporan baru diterima sistem.',
+        evidence_url: evidenceUrl, created_at: new Date().toISOString()
       }]);
-
       if (error) throw error;
       alert('Laporan berhasil dikirim!');
       setShowReportModal(false);
       setFormData({ name: userName || '', nip: '', category: 'Perundungan / Bullying', chronology: '', evidenceFile: null });
-      fetchCases();
-      
-      // WA Link...
-    } catch (err: any) {
-      alert('Gagal: ' + err.message);
-    } finally {
-      setUploading(false);
-    }
+      fetchData();
+    } catch (err: any) { alert('Gagal: ' + err.message); } finally { setUploading(false); }
   };
 
-  // --- 7. UPDATE KASUS (ADMIN) ---
   const handleUpdateCase = async (e: React.FormEvent) => {
     e.preventDefault();
     setUploading(true);
     try {
       let resolutionUrl = undefined;
-      // Jika Admin upload bukti baru, simpan ke variabel resolutionUrl
-      if (editData.newEvidence) {
-        resolutionUrl = await handleUpload(editData.newEvidence);
-      }
-
-      const updatePayload: any = {
-        status: editData.status,
-        progress_notes: editData.progress
-      };
-      
-      // PENTING: Simpan ke kolom BARU (resolution_evidence_url), JANGAN timpa evidence_url
-      if (resolutionUrl) {
-        updatePayload.resolution_evidence_url = resolutionUrl;
-      }
-
+      if (editData.newEvidence) resolutionUrl = await handleUpload(editData.newEvidence);
+      const updatePayload: any = { status: editData.status, progress_notes: editData.progress };
+      if (resolutionUrl) updatePayload.resolution_evidence_url = resolutionUrl;
       const { error } = await supabase.from('advocacy').update(updatePayload).eq('id', editData.id);
       if (error) throw error;
-
       alert('Update berhasil!');
       setShowEditModal(false);
-      fetchCases();
+      fetchData();
+    } catch (err: any) { alert('Gagal update: ' + err.message); } finally { setUploading(false); }
+  };
+
+  // --- ACTIONS ARTIKEL LITERASI (BARU) ---
+  const handleSaveArticle = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setUploading(true);
+    try {
+      if (articleForm.id) {
+        // Update Existing
+        const { error } = await supabase.from('legal_literacy').update({
+          title: articleForm.title, description: articleForm.description,
+          content: articleForm.content, icon_type: articleForm.icon_type
+        }).eq('id', articleForm.id);
+        if (error) throw error;
+      } else {
+        // Create New
+        const { error } = await supabase.from('legal_literacy').insert([{
+          title: articleForm.title, description: articleForm.description,
+          content: articleForm.content, icon_type: articleForm.icon_type
+        }]);
+        if (error) throw error;
+      }
+      alert('Data Literasi berhasil disimpan!');
+      setShowArticleForm(false);
+      fetchData();
     } catch (err: any) {
-      alert('Gagal update: ' + err.message);
+      alert('Gagal simpan artikel: ' + err.message);
     } finally {
       setUploading(false);
     }
   };
 
+  const handleDeleteArticle = async (id: number) => {
+    if(!window.confirm("Yakin ingin menghapus materi literasi ini?")) return;
+    try {
+      const { error } = await supabase.from('legal_literacy').delete().eq('id', id);
+      if (error) throw error;
+      fetchData();
+    } catch (err: any) { alert('Gagal hapus: ' + err.message); }
+  };
+
+  const openEditArticle = (item: any) => {
+    setArticleForm({
+      id: item.id, title: item.title, description: item.description,
+      content: item.content, icon_type: item.icon_type
+    });
+    setShowArticleForm(true);
+  };
+
+  const openAddArticle = () => {
+    setArticleForm({
+      id: null, title: '', description: '', content: '', icon_type: 'file'
+    });
+    setShowArticleForm(true);
+  };
+
+  // Status Badge Helper
   const getStatusBadge = (status: string) => {
     switch(status) {
       case 'Selesai': return 'bg-green-100 text-green-700 border-green-200';
@@ -160,7 +187,7 @@ const Advocacy = () => {
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       
-      {/* HEADER HERO (Sama seperti sebelumnya) */}
+      {/* HEADER HERO */}
       <div className="bg-gradient-to-r from-slate-800 to-slate-900 rounded-[32px] p-8 text-white shadow-xl relative overflow-hidden">
         <div className="absolute top-0 right-0 opacity-10 -mr-10 -mt-10"><Scale size={200} /></div>
         <div className="relative z-10 max-w-2xl">
@@ -178,7 +205,7 @@ const Advocacy = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* LIST PENGADUAN */}
+        {/* KOLOM KIRI: STATUS PENGADUAN */}
         <div className="lg:col-span-2 space-y-6">
           <div className="flex items-center gap-2 mb-2"><Scale className="text-slate-700" /><h2 className="text-xl font-bold text-gray-800 uppercase">Status Pengaduan</h2></div>
 
@@ -187,15 +214,12 @@ const Advocacy = () => {
               <div className="text-center p-10"><Loader2 className="animate-spin mx-auto"/></div>
             ) : myCases.length > 0 ? (
               myCases.map((kasus) => {
-                // LOGIC PRIVASI:
-                const isMyCase = kasus.reporter_name === userName; // Cek kepemilikan
-                const canSeeEvidence = isAdmin || isMyCase; // Hanya Admin & Pemilik yang bisa lihat bukti
-                const displayName = (isAdmin || isMyCase) ? `${kasus.reporter_name} (${kasus.reporter_nip})` : maskName(kasus.reporter_name); // Samarkan nama untuk orang lain
+                const isMyCase = kasus.reporter_name === userName;
+                const canSeeEvidence = isAdmin || isMyCase;
+                const displayName = (isAdmin || isMyCase) ? `${kasus.reporter_name} (${kasus.reporter_nip})` : maskName(kasus.reporter_name);
 
                 return (
                   <div key={kasus.id} className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 relative group">
-                    
-                    {/* Tombol Edit Admin */}
                     {isAdmin && (
                       <button 
                         onClick={() => {
@@ -208,28 +232,20 @@ const Advocacy = () => {
                       </button>
                     )}
 
-                    {/* Header Card */}
                     <div className="flex justify-between items-start mb-3 pr-10">
                       <div>
                         <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{new Date(kasus.created_at).toLocaleDateString('id-ID')}</span>
                         <h3 className="text-lg font-black text-slate-800 uppercase italic">{kasus.category}</h3>
-                        
-                        {/* TAMPILAN NAMA (DISAMARKAN ATAU ASLI) */}
                         <p className="text-xs text-slate-500 font-bold flex items-center gap-1 mt-1">
                           Pelapor: {displayName} 
                           {!isAdmin && !isMyCase && <EyeOff size={10} className="text-gray-400"/>}
                         </p>
                       </div>
-                      <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${getStatusBadge(kasus.status)}`}>
-                        {kasus.status}
-                      </span>
+                      <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${getStatusBadge(kasus.status)}`}>{kasus.status}</span>
                     </div>
                     
-                    {/* Isi Laporan & Bukti Awal */}
                     <div className="bg-gray-50 p-4 rounded-xl mb-3 border border-gray-100">
                       <p className="text-sm text-gray-600 italic leading-relaxed">"{kasus.description}"</p>
-                      
-                      {/* BUKTI PELAPOR (Hanya muncul untuk Admin/Pemilik) */}
                       {kasus.evidence_url && (
                         <div className="mt-3 pt-2 border-t border-gray-200/50">
                            {canSeeEvidence ? (
@@ -245,14 +261,11 @@ const Advocacy = () => {
                       )}
                     </div>
 
-                    {/* Update & Bukti Penyelesaian */}
                     <div className="flex items-start gap-3 mt-4 pt-4 border-t border-gray-100">
                       <div className="bg-indigo-50 p-2 rounded-full text-indigo-600"><AlertCircle size={16} /></div>
                       <div className="w-full">
                         <p className="text-[10px] font-bold text-indigo-600 uppercase mb-1">Update LKBH:</p>
                         <p className="text-sm text-gray-700 font-medium mb-2">{kasus.progress_notes || 'Belum ada catatan.'}</p>
-                        
-                        {/* BUKTI PENYELESAIAN (BARU) - Tampil di bawah update */}
                         {kasus.resolution_evidence_url && (
                            <div className="mt-2">
                               {canSeeEvidence ? (
@@ -272,50 +285,77 @@ const Advocacy = () => {
                 );
               })
             ) : (
-              <div className="text-center p-12 bg-white rounded-2xl border border-dashed border-gray-300 text-gray-400">
-                <p>Belum ada data.</p>
-              </div>
+              <div className="text-center p-12 bg-white rounded-2xl border border-dashed border-gray-300 text-gray-400">Belum ada data.</div>
             )}
           </div>
         </div>
 
-        {/* SIDEBAR ARTIKEL (Tetap sama) */}
+        {/* KOLOM KANAN: LITERASI HUKUM (DINAMIS) */}
         <div>
-           {/* ... Kode sidebar artikel sama seperti sebelumnya ... */}
-           {/* Biar tidak kepanjangan, bagian ini tidak saya tulis ulang karena tidak ada perubahan logic */}
-             <div className="bg-white rounded-[32px] shadow-sm border border-gray-100 p-6 sticky top-6">
-            <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2 uppercase text-sm"><FileText size={18} className="text-slate-600"/> Literasi Hukum Guru</h3>
+          <div className="bg-white rounded-[32px] shadow-sm border border-gray-100 p-6 sticky top-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-gray-800 flex items-center gap-2 uppercase text-sm"><FileText size={18} className="text-slate-600"/> Literasi Hukum</h3>
+              {isAdmin && (
+                <button onClick={openAddArticle} className="bg-slate-800 text-white p-1.5 rounded-lg hover:bg-slate-700 transition-colors" title="Tambah Artikel">
+                  <Plus size={14} />
+                </button>
+              )}
+            </div>
+            
             <div className="space-y-3">
-              {legalArticles.map((art) => (
-                <div key={art.id} onClick={() => setShowArticleModal(art)} className="group cursor-pointer p-3 rounded-2xl hover:bg-slate-50 transition-all border border-transparent hover:border-slate-100">
-                  <div className="flex items-start gap-3">
-                    <div className="bg-gray-100 p-2.5 rounded-xl group-hover:bg-white group-hover:shadow-sm transition-all">{art.icon}</div>
+              {loading && articles.length === 0 ? <Loader2 className="animate-spin mx-auto"/> : 
+                articles.map((art) => (
+                <div key={art.id} className="group relative">
+                  {/* Card Artikel */}
+                  <div onClick={() => setShowArticleModal(art)} className="cursor-pointer p-3 rounded-2xl hover:bg-slate-50 transition-all border border-transparent hover:border-slate-100 flex items-start gap-3">
+                    <div className="bg-gray-100 p-2.5 rounded-xl group-hover:bg-white group-hover:shadow-sm transition-all text-slate-600 group-hover:text-blue-600">
+                      {getIcon(art.icon_type, "")}
+                    </div>
                     <div>
                       <h4 className="font-bold text-gray-700 text-xs mb-1 group-hover:text-blue-600 transition-colors uppercase leading-tight">
                         {art.title}
                       </h4>
-                      <p className="text-[10px] text-gray-500 line-clamp-2">{art.desc}</p>
+                      <p className="text-[10px] text-gray-500 line-clamp-2">{art.description}</p>
                     </div>
                   </div>
+
+                  {/* Tombol Edit/Delete Admin (Floating saat hover) */}
+                  {isAdmin && (
+                    <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 backdrop-blur-sm rounded-lg p-1 shadow-sm">
+                      <button onClick={(e) => { e.stopPropagation(); openEditArticle(art); }} className="p-1 text-blue-600 hover:bg-blue-50 rounded"><Edit size={12}/></button>
+                      <button onClick={(e) => { e.stopPropagation(); handleDeleteArticle(art.id); }} className="p-1 text-red-600 hover:bg-red-50 rounded"><Trash2 size={12}/></button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
+            
+            <div className="mt-6 pt-6 border-t border-gray-100">
+              <div className="bg-blue-50 p-5 rounded-2xl border border-blue-100 text-center">
+                <p className="text-xs font-bold text-blue-800 mb-3 uppercase">Konsultasi via WhatsApp</p>
+                <button 
+                  onClick={() => window.open(`https://wa.me/6283102205547?text=Assalamualaikum Ketua Ranting, saya mau konsultasi hukum.`, '_blank')}
+                  className="text-xs bg-blue-600 text-white px-4 py-3 rounded-xl w-full font-bold hover:bg-blue-700 transition-colors flex justify-center items-center gap-2 uppercase tracking-wide shadow-md"
+                >
+                  <Send size={14} /> Chat Ketua Ranting
+                </button>
+              </div>
             </div>
+          </div>
         </div>
       </div>
 
-      {/* --- MODAL LAPOR (Sama, tidak berubah) --- */}
+      {/* --- MODAL 1: LAPOR KASUS (Sama) --- */}
       {showReportModal && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in zoom-in">
-           {/* ... Form Lapor sama ... */}
-           {/* Salin dari kode sebelumnya, fungsinya sama */}
-             <div className="bg-white rounded-[32px] w-full max-w-lg shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-[32px] w-full max-w-lg shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
             <div className="bg-slate-800 p-6 flex justify-between items-center text-white">
               <h3 className="font-black text-lg flex items-center gap-2 uppercase italic"><AlertTriangle size={20} className="text-yellow-400"/> Form Pengaduan</h3>
               <button onClick={() => setShowReportModal(false)} className="text-slate-400 hover:text-white"><X size={24} /></button>
             </div>
             <form onSubmit={handleSubmitReport} className="p-8 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+               {/* Form Fields Sama... */}
+               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-[10px] font-bold uppercase text-gray-500 mb-1">Nama Pelapor</label><input required className="w-full p-3 border-2 border-gray-100 rounded-xl font-bold text-sm focus:border-slate-800 outline-none" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} /></div>
                 <div><label className="block text-[10px] font-bold uppercase text-gray-500 mb-1">NIP / Identitas</label><input required className="w-full p-3 border-2 border-gray-100 rounded-xl font-bold text-sm focus:border-slate-800 outline-none" value={formData.nip} onChange={e => setFormData({...formData, nip: e.target.value})} /></div>
               </div>
@@ -346,10 +386,11 @@ const Advocacy = () => {
         </div>
       )}
 
-      {/* --- MODAL EDIT (UPDATE: Label berubah jadi "Bukti Penyelesaian") --- */}
+      {/* --- MODAL 2: EDIT UPDATE KASUS (Sama) --- */}
       {showEditModal && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-[32px] w-full max-w-md shadow-2xl overflow-hidden">
+             {/* Isi Form Edit Sama seperti sebelumnya... */}
             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
               <h3 className="font-black uppercase italic text-gray-800">Update Penanganan</h3>
               <button onClick={() => setShowEditModal(false)}><X size={20} className="text-gray-400" /></button>
@@ -384,13 +425,15 @@ const Advocacy = () => {
         </div>
       )}
 
-      {/* --- MODAL ARTIKEL (Sama, tidak berubah) --- */}
+      {/* --- MODAL 3: BACA ARTIKEL --- */}
       {showArticleModal && (
         <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4 backdrop-blur-sm animate-in zoom-in">
-             <div className="bg-white rounded-[32px] w-full max-w-2xl shadow-2xl overflow-hidden max-h-[80vh] flex flex-col">
+          <div className="bg-white rounded-[32px] w-full max-w-2xl shadow-2xl overflow-hidden max-h-[80vh] flex flex-col">
             <div className="p-6 border-b border-gray-100 flex justify-between items-start bg-gray-50">
               <div className="flex items-center gap-4">
-                <div className="bg-white p-3 rounded-2xl shadow-sm border border-gray-100">{showArticleModal.icon}</div>
+                <div className="bg-white p-3 rounded-2xl shadow-sm border border-gray-100 text-slate-700">
+                  {getIcon(showArticleModal.icon_type, "text-blue-600")}
+                </div>
                 <h3 className="font-black text-xl text-gray-800 leading-tight uppercase italic w-3/4">{showArticleModal.title}</h3>
               </div>
               <button onClick={() => setShowArticleModal(null)} className="text-gray-400 hover:text-red-600"><X size={24} /></button>
@@ -403,6 +446,44 @@ const Advocacy = () => {
             <div className="p-6 border-t border-gray-100 bg-gray-50 text-right">
               <button onClick={() => setShowArticleModal(null)} className="px-8 py-3 bg-slate-800 text-white rounded-xl font-black uppercase text-xs tracking-widest hover:bg-slate-900 shadow-lg">Tutup</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL 4: TAMBAH/EDIT ARTIKEL (KHUSUS ADMIN) --- */}
+      {showArticleForm && (
+        <div className="fixed inset-0 bg-black/70 z-[70] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-[32px] w-full max-w-md shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+              <h3 className="font-black uppercase italic text-gray-800">{articleForm.id ? 'Edit Materi' : 'Tambah Materi Baru'}</h3>
+              <button onClick={() => setShowArticleForm(false)}><X size={20} className="text-gray-400" /></button>
+            </div>
+            <form onSubmit={handleSaveArticle} className="p-8 space-y-4">
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-gray-500 mb-1">Judul Materi</label>
+                <input required className="w-full p-3 border-2 border-gray-100 rounded-xl font-bold text-sm outline-none focus:border-slate-800" value={articleForm.title} onChange={e => setArticleForm({...articleForm, title: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-gray-500 mb-1">Deskripsi Singkat (Max 2 Baris)</label>
+                <input required className="w-full p-3 border-2 border-gray-100 rounded-xl font-medium text-sm outline-none focus:border-slate-800" value={articleForm.description} onChange={e => setArticleForm({...articleForm, description: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-gray-500 mb-1">Isi Lengkap</label>
+                <textarea required rows={6} className="w-full p-3 border-2 border-gray-100 rounded-xl font-medium text-sm outline-none focus:border-slate-800" value={articleForm.content} onChange={e => setArticleForm({...articleForm, content: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-gray-500 mb-1">Pilih Ikon</label>
+                <select className="w-full p-3 border-2 border-gray-100 rounded-xl font-bold text-sm bg-white outline-none focus:border-slate-800" value={articleForm.icon_type} onChange={e => setArticleForm({...articleForm, icon_type: e.target.value})}>
+                  <option value="file">File / Dokumen</option>
+                  <option value="shield">Perisai (Hukum)</option>
+                  <option value="scale">Timbangan (Keadilan)</option>
+                  <option value="alert">Peringatan</option>
+                </select>
+              </div>
+              <button type="submit" disabled={uploading} className="w-full bg-slate-800 hover:bg-slate-900 text-white py-4 rounded-xl font-black uppercase text-xs tracking-widest shadow-lg mt-2">
+                {uploading ? 'Menyimpan...' : 'Simpan Data'}
+              </button>
+            </form>
           </div>
         </div>
       )}
