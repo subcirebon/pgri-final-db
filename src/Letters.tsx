@@ -213,7 +213,7 @@ const Letters = () => {
           { text: formData.penutup, alignment: 'justify' },
           
           { stack: [{ text: selectedType.formType === 'formal' ? '' : '\nPENGURUS PGRI RANTING KALIJAGA', bold: true }], alignment: 'center' },
-          { image: ttd, width: 520, alignment: 'center', margin: [0, -10, 0, 0] }
+          { image: ttd, width: 480, alignment: 'center', margin: [0, -20, 0, 0] }
         ]
       };
       pdfMake.createPdf(docDef).open();
