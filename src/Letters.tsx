@@ -409,7 +409,7 @@ const Letters = () => {
                     <p className="whitespace-pre-line text-justify">{formData.penutup}</p>
                     <div className="mt-12 text-center">
                        {selectedType.formType === 'formal' && <p className="mb-2 italic">{titiMangsa}</p>}
-                       <p className="font-bold">PENGURUS PGRI RANTING PGRI</p>
+                       <p className="font-bold">PENGURUS PGRI RANTING KALIJAGA</p>
                        <div className="flex justify-center -mt-4">
                            <img src={URL_TTD_DEFAULT} className="w-full max-w-[480px] object-contain opacity-95" alt="TTD"/>
                        </div>
