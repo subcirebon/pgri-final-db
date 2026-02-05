@@ -55,7 +55,7 @@ function App() {
       />
       
       <Route 
-        path="/register/*" 
+        path="/register" 
         element={!isAuthenticated ? <Register /> : <Navigate to="/" replace />} 
       />
 
