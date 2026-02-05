@@ -476,7 +476,7 @@ const Letters = () => {
                     <div className="mt-8 text-center"> {selectedType.formType === 'formal' && <div className="mb-1">{titiMangsa}</div>} <div className="font-bold">PENGURUS PGRI RANTING KALIJAGA</div> </div>
                     {/* PREVIEW VISUAL TTD */}
                     <div className="flex justify-center mt-4">
-                       <img src={customSignature || URL_TTD_DEFAULT} className="w-full max-w-[480px] object-contain opacity-90"/>
+                       <img src={customSignature || URL_TTD_DEFAULT} className="w-full max-w-[650px] object-contain opacity-90"/>
                     </div>
                  </div>
               </div>
