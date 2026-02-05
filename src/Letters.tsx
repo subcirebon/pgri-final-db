@@ -399,7 +399,7 @@ const Letters = () => {
                        {selectedType.formType === 'formal' && <p className="mb-2 italic">{titiMangsa}</p>}
                        <p className="font-bold">PENGURUS PGRI RANTING KALIJAGA</p>
                        <div className="flex justify-center -mt-4">
-                           <img src={URL_TTD_DEFAULT} className="w-full max-w-[650px] object-contain opacity-95" alt="TTD"/>
+                           <img src={URL_TTD_DEFAULT} className="w-full max-w-[480px] object-contain opacity-95" alt="TTD"/>
                        </div>
                     </div>
                  </div>
