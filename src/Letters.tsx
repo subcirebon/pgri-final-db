@@ -28,7 +28,7 @@ pdfMake.fonts = {
 };
 
 const LOGO_URL = "https://upload.wikimedia.org/wikipedia/commons/2/2a/Persatuan_Guru_Republik_Indonesia.png";
-const URL_TTD_DEFAULT = "https://vuzwlgwzhiuosgeohhjl.supabase.co/storage/v1/object/public/letters-archive/ttd-surat.png";
+const URL_TTD_DEFAULT = "https://vuzwlgwzhiuosgeohhjl.supabase.co/storage/v1/object/public/letters-archive/ttd-surat%20(1).png";
 
 const getBase64ImageFromURL = (url: string): Promise<string> => {
   return new Promise((resolve) => {
