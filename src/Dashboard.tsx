@@ -262,7 +262,7 @@ const Dashboard = () => {
                     />
                     <QrCode className="text-gray-300 hidden" size={100} /> 
                   </div>
-                  <p className="text-[10px] font-black text-gray-800 uppercase tracking-wide">Scan QRIS Bendahara</p>
+                  <p className="text-[10px] font-black text-gray-800 uppercase tracking-wide">Scan QRIS PGRI Ranting Kalijaga</p>
                   <p className="text-[9px] text-gray-400 mt-1">DANA / GoPay / ShopeePay / M-Banking</p>
               </div>
 
