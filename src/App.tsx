@@ -53,7 +53,7 @@ function App() {
     // JANGAN PAKAI <BrowserRouter> DISINI LAGI (Sudah ada di main.tsx)
     <Routes>
       <Route 
-        path="/login" 
+        path="/login/*" 
         element={!isAuthenticated ? <Login onLogin={handleLogin} /> : <Navigate to="/" replace />} 
       />
       
