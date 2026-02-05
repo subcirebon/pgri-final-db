@@ -188,10 +188,10 @@ const Letters = () => {
                 width: '*',
                 stack: [
                   { text: 'PERSATUAN GURU REPUBLIK INDONESIA', bold: true, fontSize: 14 },
-                  { text: 'PENGURUS', bold: true, fontSize: 14 },
-                  { text: 'RANTING KALIJAGA', bold: true, fontSize: 14, margin: [0, 2, 0, 2] },
+                  { text: 'PENGURUS', bold: true, fontSize: 13 },
+                  { text: 'RANTING KALIJAGA', bold: true, fontSize: 18, margin: [0, 2, 0, 2] },
                   { text: 'Kalijaga Sub Branch', fontSize: 12, italics: true, bold: true, margin: [0, 0, 0, 4] },
-                  { text: 'Sekretariat : Jl. Teratai Raya No 1 Perum Kalijaga Permai Kel. Kalijaga  Kec. Harjamukti Kota Cirebon 45143', fontSize: 9 },
+                  { text: 'Jl. Teratai Raya No 1 Perum Kalijaga Permai Kel. Kalijaga  Kec. Harjamukti Kota Cirebon 45144', fontSize: 9 },
                   { text: 'email: pgrikalijaga@gmail.com website: pgrikalijaga.sekolahdasar.online', fontSize: 9 }
                 ],
                 alignment: 'center'
@@ -239,7 +239,7 @@ const Letters = () => {
       <div className="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-[32px] border shadow-sm gap-4">
         <div>
             <h1 className="text-xl font-black uppercase italic text-gray-800 tracking-tighter">Administrasi Surat</h1>
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">PGRI Cabang Harjamukti • {currentYear}</p>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">PGRI RANTING KALIJAGA • {currentYear}</p>
         </div>
         <div className="flex bg-gray-100 p-1 rounded-2xl shadow-inner">
           {isAdmin && <button onClick={() => setActiveTab('create')} className={`px-5 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'create' ? 'bg-white shadow-sm text-red-700' : 'text-gray-400'}`}>BUAT SURAT</button>}
@@ -365,12 +365,12 @@ const Letters = () => {
                  <div className="border-b-4 border-black pb-4 mb-6 flex items-center gap-6">
                     <img src={LOGO_URL} className="w-24 h-auto" crossOrigin="anonymous" alt="Logo"/>
                     <div className="flex-1 text-center">
-                       <h3 className="text-[13pt] font-bold leading-tight uppercase">PERSATUAN GURU REPUBLIK INDONESIA</h3>
-                       <h2 className="text-[14pt] font-bold leading-tight uppercase mt-1">PENGURUS</h2>
-                       <h2 className="text-[18pt] font-black leading-none uppercase">CABANG HARJAMUKTI</h2>
-                       <h4 className="text-[11pt] italic font-bold mt-1">Harjamukti Branch</h4>
-                       <p className="text-[8.5pt] mt-2 font-sans font-bold text-black/70">Sekretariat : Korwil Harjamukti Kec. Harjamukti Kota Cirebon</p>
-                       <p className="text-[8.5pt] font-sans font-bold text-black/70">Jl. Rajawali Barat III RT. 06 RW 04 No. 1 Kec. Harjamukti Kota Cirebon 45143</p>
+                       <h3 className="text-[14pt] font-bold leading-tight uppercase">PERSATUAN GURU REPUBLIK INDONESIA</h3>
+                       <h2 className="text-[13pt] font-bold leading-tight uppercase mt-1">PENGURUS</h2>
+                       <h2 className="text-[18pt] font-black leading-none uppercase">RANTING KALIJAGA</h2>
+                       <h4 className="text-[12pt] italic font-bold mt-1">Kalijaga Sub Branch</h4>
+                       <p className="text-[9pt] mt-2 font-sans font-bold text-black/70">Jl. Teratai Raya No 1 Perum Kalijaga Permai Kel. Kalijaga  Kec. Harjamukti Kota Cirebon 45144</p>
+                       <p className="text-[9pt] font-sans font-bold text-black/70">email: pgrikalijaga@gmail.com website: pgrikalijaga.sekolahdasar.online</p>
                     </div>
                  </div>
 
@@ -409,7 +409,7 @@ const Letters = () => {
                     <p className="whitespace-pre-line text-justify">{formData.penutup}</p>
                     <div className="mt-12 text-center">
                        {selectedType.formType === 'formal' && <p className="mb-2 italic">{titiMangsa}</p>}
-                       <p className="font-bold">PENGURUS PGRI CABANG HARJAMUKTI</p>
+                       <p className="font-bold">PENGURUS PGRI RANTING PGRI</p>
                        <div className="flex justify-center -mt-4">
                            <img src={URL_TTD_DEFAULT} className="w-full max-w-[480px] object-contain opacity-95" alt="TTD"/>
                        </div>
