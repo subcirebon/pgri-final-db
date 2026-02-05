@@ -50,12 +50,12 @@ function App() {
   return (
     <Routes>
       <Route 
-        path="/login" 
+        path="/login/*" 
         element={!isAuthenticated ? <Login onLogin={handleLogin} /> : <Navigate to="/" replace />} 
       />
       
       <Route 
-        path="/register" 
+        path="/register/*" 
         element={!isAuthenticated ? <Register /> : <Navigate to="/" replace />} 
       />
 
