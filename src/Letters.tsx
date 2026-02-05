@@ -178,9 +178,11 @@ const Letters = () => {
       if (dbErr) throw dbErr;
 
       const docDef: any = {
-        pageSize: 'FOLIO', pageMargins: [72, 40, 72, 72], defaultStyle: { font: 'Times', fontSize: 12 },
+        pageSize: 'FOLIO', 
+        pageMargins: [72, 40, 72, 72], 
+        defaultStyle: { font: 'Times', fontSize: 12 },
         content: [
-          // --- KOP SURAT SESUAI GAMBAR ---
+          // KOP PDF IDENTIK PREVIEW
           {
             columns: [
               { image: logo, width: 85 },
@@ -188,8 +190,8 @@ const Letters = () => {
                 width: '*',
                 stack: [
                   { text: 'PERSATUAN GURU REPUBLIK INDONESIA', bold: true, fontSize: 14 },
-                  { text: 'PENGURUS', bold: true, fontSize: 13 },
-                  { text: 'RANTING KALIJAGA', bold: true, fontSize: 18, margin: [0, 2, 0, 2] },
+                  { text: 'PENGURUS', bold: true, fontSize: 13, margin: [0, 2, 0, 0] },
+                  { text: 'RANTING KALIJAGA', bold: true, fontSize: 18, margin: [0, 0, 0, 2] },
                   { text: 'Kalijaga Sub Branch', fontSize: 12, italics: true, bold: true, margin: [0, 0, 0, 4] },
                   { text: 'Jl. Teratai Raya No 1 Perum Kalijaga Permai Kel. Kalijaga  Kec. Harjamukti Kota Cirebon 45144', fontSize: 9 },
                   { text: 'email: pgrikalijaga@gmail.com website: pgrikalijaga.sekolahdasar.online', fontSize: 9 }
@@ -206,13 +208,13 @@ const Letters = () => {
             { text: selectedType.label.toUpperCase(), alignment: 'center', bold: true, decoration: 'underline', fontSize: 14 },
             { text: `Nomor : ${fullLetterNumber}`, alignment: 'center', margin: [0, 0, 0, 20] }
           ] : [
-            { columns: [{ width: '*', text: `Nomor : ${fullLetterNumber}\nPerihal : ${formData.perihal}` }, { width: 'auto', text: titiMangsa, alignment: 'right' }] },
+            { columns: [{ width: '*', table: { widths: [60, 5, '*'], body: [['Nomor', ':', fullLetterNumber], ['Lampiran', ':', formData.lampiran], ['Perihal', ':', selectedType.label + ' ' + formData.perihal]] }, layout: 'noBorders' }, { width: 'auto', text: titiMangsa, alignment: 'right' }] },
             { text: '\nKepada Yth,\n' + formData.tujuan, bold: true, margin: [0, 15, 0, 15] }
           ],
 
           { text: formData.pembuka, alignment: 'justify' },
           selectedType.formType === 'invitation' ? { 
-              margin: [30, 10, 0, 10], table: { widths: [80, 10, '*'], body: [
+              margin: [30, 10, 0, 10], table: { widths: [80, 5, '*'], body: [
                 ['Hari', ':', formData.hari], 
                 ['Tanggal', ':', formData.tanggal_acara], 
                 ['Waktu', ':', formData.waktu], 
@@ -222,8 +224,14 @@ const Letters = () => {
           } : { text: formData.isi_utama, alignment: 'justify', margin: [0, 10, 0, 10] },
           { text: formData.penutup, alignment: 'justify' },
           
-          { stack: [{ text: selectedType.formType === 'formal' ? '' : '\nPENGURUS PGRI RANTING KALIJAGA', bold: true }], alignment: 'center' },
-          { image: ttd, width: 480, alignment: 'center', margin: [0, -10, 0, 0] }
+          { 
+            stack: [
+              { text: selectedType.formType === 'formal' ? '\n' + titiMangsa + '\n' : '', alignment: 'center' },
+              { text: 'PENGURUS PGRI RANTING KALIJAGA', bold: true, alignment: 'center' }
+            ], 
+            margin: [0, 20, 0, 0] 
+          },
+          { image: ttd, width: 480, alignment: 'center', margin: [0, -15, 0, 0] }
         ]
       };
       pdfMake.createPdf(docDef).open();
@@ -272,7 +280,7 @@ const Letters = () => {
                 </div>
                 <input className="w-full p-3 border-2 border-blue-200 rounded-xl font-bold" placeholder="Nama Acara" value={formData.acara} onChange={e => setFormData({...formData, acara: e.target.value})} />
               </div>
-            ) : <textarea rows={8} className="w-full p-3 border rounded-xl" placeholder="Isi Surat" value={formData.isi_utama} onChange={e => setFormData({...formData, isi_utama: e.target.value})} />}
+            ) : <textarea rows={8} className="w-full p-3 border rounded-xl outline-none" placeholder="Isi Surat" value={formData.isi_utama} onChange={e => setFormData({...formData, isi_utama: e.target.value})} />}
             <textarea rows={3} className="w-full p-3 border rounded-xl" placeholder="Penutup" value={formData.penutup} onChange={e => setFormData({...formData, penutup: e.target.value})} />
             <button onClick={() => setIsPreviewing(true)} className="w-full bg-slate-800 text-white py-4 rounded-2xl font-bold uppercase shadow-lg hover:bg-black transition-all">Preview Visual</button>
            </div>
@@ -330,26 +338,6 @@ const Letters = () => {
         </div>
       )}
 
-      {/* MODAL MASUK */}
-      {showInModal && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-           <div className="bg-white w-full max-w-md rounded-[32px] p-8 shadow-2xl relative animate-in zoom-in duration-200">
-              <button onClick={() => setShowInModal(false)} className="absolute top-6 right-6 text-gray-400 hover:text-red-600 transition-colors"><X size={24}/></button>
-              <h3 className="font-black italic text-xl mb-6 uppercase tracking-tighter text-slate-800">Arsipkan Surat</h3>
-              <form onSubmit={handleSaveIncoming} className="space-y-4">
-                <input type="text" placeholder="Instansi Pengirim" required className="w-full p-3 border-2 border-gray-100 rounded-xl font-bold" value={inForm.sender} onChange={e => setInForm({...inForm, sender: e.target.value})} />
-                <input type="text" placeholder="Judul / Perihal Surat" required className="w-full p-3 border-2 border-gray-100 rounded-xl font-bold" value={inForm.subject} onChange={e => setInForm({...inForm, subject: e.target.value})} />
-                <div className="p-6 bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl text-center">
-                   <input type="file" required onChange={e => setInForm({...inForm, file: e.target.files?.[0] || null})} className="text-xs" />
-                </div>
-                <button disabled={uploading} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold uppercase shadow-lg disabled:bg-gray-400">
-                  {uploading ? <Loader2 className="animate-spin mx-auto"/> : 'Simpan Arsip'}
-                </button>
-              </form>
-           </div>
-        </div>
-      )}
-
       {/* PREVIEW */}
       {isPreviewing && (
         <div className="fixed inset-0 bg-gray-900 z-50 overflow-y-auto font-sans">
@@ -361,7 +349,7 @@ const Letters = () => {
            </div>
            <div className="flex justify-center p-8">
               <div className="bg-white w-[215mm] min-h-[330mm] p-[2.54cm] text-black font-serif relative shadow-2xl">
-                 {/* --- KOP PREVIEW SESUAI GAMBAR --- */}
+                 {/* KOP PREVIEW DISINKRONKAN DENGAN PDF */}
                  <div className="border-b-4 border-black pb-4 mb-6 flex items-center gap-6">
                     <img src={LOGO_URL} className="w-24 h-auto" crossOrigin="anonymous" alt="Logo"/>
                     <div className="flex-1 text-center">
@@ -384,9 +372,9 @@ const Letters = () => {
                     ) : ( 
                         <div className="flex justify-between items-start"> 
                             <table><tbody> 
-                                <tr><td className="w-24">Nomor</td><td>: {fullLetterNumber}</td></tr> 
-                                <tr><td>Lampiran</td><td>: {formData.lampiran}</td></tr> 
-                                <tr><td>Perihal</td><td>: {selectedType.label} {formData.perihal}</td></tr> 
+                                <tr><td className="w-24 font-normal">Nomor</td><td className="px-2">:</td><td className="font-normal">{fullLetterNumber}</td></tr> 
+                                <tr><td className="font-normal">Lampiran</td><td className="px-2">:</td><td className="font-normal">{formData.lampiran}</td></tr> 
+                                <tr><td className="font-normal">Perihal</td><td className="px-2">:</td><td className="font-normal">{selectedType.label} {formData.perihal}</td></tr> 
                             </tbody></table> 
                             <div className="text-right italic">{titiMangsa}</div> 
                         </div> 
@@ -394,23 +382,24 @@ const Letters = () => {
                     {selectedType.formType !== 'formal' && <p className="font-bold mt-4">Kepada Yth,<br/>{formData.tujuan}</p>}
                     <p className="whitespace-pre-line text-justify">{formData.pembuka}</p>
                     {selectedType.formType === 'invitation' && (
-                       <div className="ml-10 my-4 border-l-4 border-gray-100 pl-4">
+                       <div className="ml-10 my-4">
                           <table><tbody>
-                             <tr><td>Hari</td><td>: {formData.hari}</td></tr>
-                             <tr><td>Tanggal</td><td>: {formData.tanggal_acara}</td></tr>
-                             <tr><td>Waktu</td><td>: {formData.waktu}</td></tr>
-                             <tr><td>Tempat</td><td>: {formData.tempat}</td></tr>
-                             <tr><td className="w-28 font-bold align-top">Acara</td><td>: {formData.acara}</td></tr>
+                             <tr><td className="w-28 font-normal">Hari</td><td className="px-2">:</td><td>{formData.hari}</td></tr>
+                             <tr><td className="font-normal">Tanggal</td><td className="px-2">:</td><td>{formData.tanggal_acara}</td></tr>
+                             <tr><td className="font-normal">Waktu</td><td className="px-2">:</td><td>{formData.waktu}</td></tr>
+                             <tr><td className="font-normal">Tempat</td><td className="px-2">:</td><td>{formData.tempat}</td></tr>
+                             <tr><td className="font-bold align-top">Acara</td><td className="px-2 align-top">:</td><td className="font-bold">{formData.acara}</td></tr>
                           </tbody></table>
                        </div>
                     )}
                     <p className="whitespace-pre-line text-justify">{selectedType.formType !== 'invitation' ? formData.isi_utama : ""}</p>
                     {selectedType.formType === 'formal' && <p className="whitespace-pre-line text-justify">{formData.isi_utama}</p>}
                     <p className="whitespace-pre-line text-justify">{formData.penutup}</p>
-                    <div className="mt-12 text-center">
+                    
+                    <div className="mt-12 text-center relative">
                        {selectedType.formType === 'formal' && <p className="mb-2 italic">{titiMangsa}</p>}
                        <p className="font-bold">PENGURUS PGRI RANTING KALIJAGA</p>
-                       <div className="flex justify-center -mt-4">
+                       <div className="flex justify-center -mt-8">
                            <img src={URL_TTD_DEFAULT} className="w-full max-w-[480px] object-contain opacity-95" alt="TTD"/>
                        </div>
                     </div>
