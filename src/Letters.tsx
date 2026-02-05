@@ -3,14 +3,14 @@ import { useOutletContext } from 'react-router-dom';
 import { supabase } from './supabaseClient';
 import { 
   Inbox, Send, Printer, Plus, Save, FileText, Eye, X, Loader2, 
-  ArrowLeft, History, Upload, FileUp, Image as ImageIcon, Search 
+  ArrowLeft, History, Upload, FileUp, Image as ImageIcon, Search, Lock, EyeOff
 } from 'lucide-react';
 
 // --- CONFIG PDFMAKE ---
 import pdfMake from "pdfmake/build/pdfmake";
 import pdfFonts from "pdfmake/build/vfs_fonts";
 
-// Inisialisasi Font
+// Inisialisasi VFS Font
 // @ts-ignore
 if (pdfFonts && pdfFonts.pdfMake && pdfFonts.pdfMake.vfs) {
     // @ts-ignore
@@ -32,6 +32,7 @@ const URL_TTD_DEFAULT = "https://vuzwlgwzhiuosgeohhjl.supabase.co/storage/v1/obj
 const getBase64ImageFromURL = (url: string): Promise<string> => {
   return new Promise((resolve) => {
     const fallback = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+    if (!url) { resolve(fallback); return; }
     const img = new Image();
     img.setAttribute("crossOrigin", "anonymous");
     img.onload = () => {
@@ -48,7 +49,7 @@ const getBase64ImageFromURL = (url: string): Promise<string> => {
 };
 
 const Letters = () => {
-  const { userRole } = useOutletContext<{ userRole: string }>();
+  const { userRole, userName } = useOutletContext<{ userRole: string, userName: string }>();
   const isAdmin = userRole === 'super_admin' || userRole === 'admin';
 
   const [activeTab, setActiveTab] = useState<'create' | 'in' | 'out'>(isAdmin ? 'create' : 'in');
@@ -60,7 +61,11 @@ const Letters = () => {
   const [lettersOut, setLettersOut] = useState<any[]>([]);
   const [lastLetter, setLastLetter] = useState<string>('-');
 
-  // State Form Surat Masuk (Sesuai 2 Input di Foto)
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [activeUploadId, setActiveUploadId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [customSignature, setCustomSignature] = useState<string | null>(null);
+
   const [showInModal, setShowInModal] = useState(false);
   const [inForm, setInForm] = useState({
     sender: '',
@@ -95,59 +100,73 @@ const Letters = () => {
 
   useEffect(() => { fetchData(); }, []);
 
-  // --- FUNGSI SIMPAN SURAT MASUK (FIXED) ---
+  // --- FUNGSI UPLOAD TTD (YG TADI ERROR) ---
+  const handleSignatureLocalUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => setCustomSignature(reader.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const triggerUploadArchive = (id: string) => {
+    if(!isAdmin) return;
+    setActiveUploadId(id);
+    if (fileInputRef.current) fileInputRef.current.click();
+  };
+
+  const handleArchiveFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeUploadId) return;
+    setUploadingId(activeUploadId);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `outgoing/${Date.now()}_arsip.${fileExt}`;
+      await supabase.storage.from('letters-archive').upload(fileName, file);
+      const { data } = supabase.storage.from('letters-archive').getPublicUrl(fileName);
+      await supabase.from('letters_out').update({ file_url: data.publicUrl }).eq('id', activeUploadId);
+      alert("Berhasil!"); fetchData(); 
+    } catch (err: any) { alert(err.message); } finally { setUploadingId(null); }
+  };
+
   const handleSaveIncoming = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inForm.file) return alert("Pilih file surat dulu, Pak!");
-    
+    if (!inForm.file) return alert("Pilih file dulu!");
     setUploading(true);
     try {
-      // 1. Upload ke Storage
       const fileExt = inForm.file.name.split('.').pop();
       const fileName = `incoming/${Date.now()}_masuk.${fileExt}`;
       const { error: upErr } = await supabase.storage.from('letters-archive').upload(fileName, inForm.file);
       if (upErr) throw upErr;
 
-      // 2. Ambil Link
       const { data: urlData } = supabase.storage.from('letters-archive').getPublicUrl(fileName);
-      const fileUrl = urlData.publicUrl;
 
-      // 3. Simpan ke Database (Kolom disesuaikan agar tidak error)
       const { error: dbErr } = await supabase.from('letters_in').insert([{ 
         sender: inForm.sender, 
         subject: inForm.subject, 
-        file_url: fileUrl,
+        file_url: urlData.publicUrl,
         date_received: new Date().toISOString()
       }]);
 
       if (dbErr) throw dbErr;
-
-      alert('Berhasil disimpan!');
-      setShowInModal(false);
-      setInForm({ sender: '', subject: '', file: null });
-      fetchData();
-    } catch (err: any) {
-      console.error("Error Simpan:", err);
-      alert("Gagal Simpan: " + (err.message || "Cek koneksi/RLS database"));
-    } finally {
-      setUploading(false);
-    }
+      alert('Berhasil!'); setShowInModal(false); fetchData();
+    } catch (err: any) { alert("Gagal: " + err.message); } finally { setUploading(false); }
   };
 
-  // --- CETAK PDF ---
   const handleDirectPrint = async () => {
     setUploading(true);
     try {
       const fullNo = `${formData.no_urut}/${selectedType.code}/0701-04/XXIII/2026`;
       const logo = await getBase64ImageFromURL(LOGO_URL);
-      const ttd = await getBase64ImageFromURL(URL_TTD_DEFAULT);
+      const ttd = customSignature || await getBase64ImageFromURL(URL_TTD_DEFAULT);
 
       await supabase.from('letters_out').insert([{ letter_number: fullNo, recipient: formData.tujuan, subject: formData.perihal }]);
 
       const docDef: any = {
         pageSize: 'FOLIO', pageMargins: [72, 40, 72, 72], defaultStyle: { font: 'Times', fontSize: 12 },
         content: [
-          { columns: [{ image: logo, width: 80 }, { width: '*', stack: [{ text: 'PGRI RANTING KALIJAGA', bold: true, fontSize: 18 }], alignment: 'center' }] },
+          { columns: [{ image: logo, width: 80 }, { width: '*', stack: [{ text: 'PERSATUAN GURU REPUBLIK INDONESIA', bold: true, fontSize: 13 }, { text: 'PENGURUS RANTING KALIJAGA', bold: true, fontSize: 18 }], alignment: 'center' }] },
           { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 470, y2: 0, lineWidth: 2 }], margin: [0, 5, 0, 20] },
           { text: `Nomor: ${fullNo}\nPerihal: ${formData.perihal}`, margin: [0, 0, 0, 20] },
           { text: formData.pembuka },
@@ -161,9 +180,12 @@ const Letters = () => {
     } catch (e: any) { alert(e.message); } finally { setUploading(false); }
   };
 
+  if (loadingData) return <div className="h-screen flex items-center justify-center text-gray-400 font-bold animate-pulse">Memuat...</div>;
+
   return (
     <div className="p-6 space-y-6">
-      {/* HEADER NAV */}
+      <input type="file" ref={fileInputRef} onChange={handleArchiveFileChange} className="hidden" />
+      
       <div className="flex justify-between items-center bg-white p-6 rounded-[32px] border shadow-sm">
         <h1 className="text-xl font-bold uppercase italic text-gray-800 tracking-tighter">Administrasi Surat</h1>
         <div className="flex bg-gray-100 p-1 rounded-2xl">
@@ -173,45 +195,113 @@ const Letters = () => {
         </div>
       </div>
 
-      {/* VIEW SURAT MASUK */}
+      {activeTab === 'create' && isAdmin && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+           <div className="lg:col-span-2 bg-white p-8 rounded-[32px] border shadow-sm space-y-6">
+            <select className="w-full p-3 bg-red-50 border-2 border-red-200 rounded-xl font-bold" value={selectedType.code} onChange={(e) => { const type = LETTER_TYPES.find(t => t.code === e.target.value); if(type) setSelectedType(type); }}>
+                {LETTER_TYPES.map(t => <option key={t.code} value={t.code}>{t.label}</option>)}
+            </select>
+            <input className="w-full p-3 border rounded-xl font-bold" placeholder="No Urut (Contoh: 001)" value={formData.no_urut} onChange={e => setFormData({...formData, no_urut: e.target.value})} />
+            <input className="w-full p-3 border rounded-xl font-bold" placeholder="Perihal" value={formData.perihal} onChange={e => setFormData({...formData, perihal: e.target.value})} />
+            <textarea rows={3} className="w-full p-3 border rounded-xl" placeholder="Pembuka" value={formData.pembuka} onChange={e => setFormData({...formData, pembuka: e.target.value})} />
+            <textarea rows={6} className="w-full p-3 border rounded-xl" placeholder="Isi Utama" value={formData.isi_utama} onChange={e => setFormData({...formData, isi_utama: e.target.value})} />
+            <textarea rows={3} className="w-full p-3 border rounded-xl" placeholder="Penutup" value={formData.penutup} onChange={e => setFormData({...formData, penutup: e.target.value})} />
+            <div className="p-6 bg-yellow-50 border border-yellow-100 rounded-2xl">
+                <label className="text-[10px] font-bold uppercase text-yellow-800 block mb-2">Upload TTD (Opsional)</label>
+                <input type="file" accept="image/*" onChange={handleSignatureLocalUpload} className="text-xs" />
+            </div>
+            <button onClick={() => setIsPreviewing(true)} className="w-full bg-slate-800 text-white py-4 rounded-2xl font-bold uppercase shadow-lg">Preview & Cetak</button>
+           </div>
+        </div>
+      )}
+
       {activeTab === 'in' && (
         <div className="space-y-4">
           <div className="flex justify-between items-center">
              <h3 className="font-bold text-gray-700 uppercase italic">Arsip Masuk</h3>
              {isAdmin && <button onClick={() => setShowInModal(true)} className="bg-blue-600 text-white px-6 py-2 rounded-xl font-bold text-xs uppercase flex items-center gap-2"><Plus size={16}/> Catat Baru</button>}
           </div>
-          <div className="bg-white rounded-3xl border p-4">
+          <div className="bg-white rounded-3xl border p-4 shadow-sm">
              {lettersIn.map(l => (
-               <div key={l.id} className="p-4 border-b last:border-0 flex justify-between items-center hover:bg-gray-50 rounded-xl">
-                 <div><p className="font-bold text-sm uppercase">{l.subject}</p><p className="text-[10px] text-gray-400 font-bold">{l.sender}</p></div>
-                 {l.file_url && <a href={l.file_url} target="_blank" rel="noreferrer" className="text-blue-600 text-[10px] font-bold border border-blue-100 px-3 py-1 rounded-lg">Lihat PDF</a>}
+               <div key={l.id} className="p-4 border-b last:border-0 flex justify-between items-center hover:bg-gray-50 rounded-xl transition-all">
+                 <div><p className="font-bold text-sm uppercase">{l.subject}</p><p className="text-[10px] text-gray-400 font-bold uppercase">{l.sender}</p></div>
+                 {l.file_url && <a href={l.file_url} target="_blank" rel="noreferrer" className="text-blue-600 text-[10px] font-bold border border-blue-100 px-3 py-1.5 rounded-lg hover:bg-blue-600 hover:text-white transition-all">LIHAT PDF</a>}
                </div>
              ))}
+             {lettersIn.length === 0 && <p className="text-center text-gray-400 py-10">Belum ada data.</p>}
           </div>
         </div>
       )}
 
-      {/* MODAL SIMPAN SURAT MASUK (SESUAI GAMBAR) */}
+      {activeTab === 'out' && (
+        <div className="bg-white rounded-[32px] border p-6 shadow-sm">
+           <h3 className="font-bold text-gray-800 uppercase italic mb-4">Database Keluar</h3>
+           {lettersOut.map(l => (
+               <div key={l.id} className="p-4 border-b last:border-0 flex justify-between items-center hover:bg-gray-50 rounded-xl">
+                 <div><p className="font-bold text-sm uppercase">{l.subject}</p><p className="text-[10px] text-gray-400 font-bold uppercase">No: {l.letter_number}</p></div>
+                 {l.file_url ? <a href={l.file_url} target="_blank" rel="noreferrer" className="text-green-600 text-[10px] font-bold border border-green-100 px-3 py-1.5 rounded-lg">BERKAS</a> : <button onClick={() => triggerUploadArchive(l.id)} className="text-orange-600 text-[10px] font-bold border border-orange-100 px-3 py-1.5 rounded-lg">UPLOAD SCAN</button>}
+               </div>
+           ))}
+        </div>
+      )}
+
       {showInModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
            <div className="bg-white w-full max-w-md rounded-[32px] p-8 shadow-2xl relative">
-              <button onClick={() => setShowInModal(false)} className="absolute top-6 right-6 text-gray-400"><X/></button>
-              <h3 className="font-black italic text-xl mb-6">Arsipkan Surat Masuk</h3>
+              <button onClick={() => setShowInModal(false)} className="absolute top-6 right-6 text-gray-400 hover:text-red-600 transition-colors"><X size={24}/></button>
+              <h3 className="font-black italic text-xl mb-6 uppercase">Arsipkan Surat</h3>
               <form onSubmit={handleSaveIncoming} className="space-y-4">
-                <input type="text" placeholder="Instansi Pengirim" required className="w-full p-3 border-2 border-gray-100 rounded-xl font-bold" value={inForm.sender} onChange={e => setInForm({...inForm, sender: e.target.value})} />
-                <input type="text" placeholder="Perihal / Judul Surat" required className="w-full p-3 border-2 border-gray-100 rounded-xl font-bold" value={inForm.subject} onChange={e => setInForm({...inForm, subject: e.target.value})} />
-                <div className="p-4 bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl">
+                <input type="text" placeholder="Instansi Pengirim" required className="w-full p-3 border-2 border-gray-100 rounded-xl font-bold outline-none focus:border-blue-600 transition-all" value={inForm.sender} onChange={e => setInForm({...inForm, sender: e.target.value})} />
+                <input type="text" placeholder="Perihal / Judul Surat" required className="w-full p-3 border-2 border-gray-100 rounded-xl font-bold outline-none focus:border-blue-600 transition-all" value={inForm.subject} onChange={e => setInForm({...inForm, subject: e.target.value})} />
+                <div className="p-6 bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl text-center">
                    <input type="file" required onChange={e => setInForm({...inForm, file: e.target.files?.[0] || null})} className="text-xs" />
                 </div>
-                <button disabled={uploading} className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold uppercase shadow-lg disabled:bg-gray-400">
-                  {uploading ? <Loader2 className="animate-spin mx-auto"/> : 'Simpan'}
+                <button disabled={uploading} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold uppercase shadow-lg disabled:bg-gray-400 flex justify-center">
+                  {uploading ? <Loader2 className="animate-spin"/> : 'Simpan Arsip'}
                 </button>
               </form>
            </div>
         </div>
       )}
 
-      {/* ... (Bagian Create dan Out bisa disesuaikan dengan logika di atas) ... */}
+      {isPreviewing && (
+        <div className="fixed inset-0 bg-gray-900 z-50 overflow-y-auto">
+           <div className="bg-slate-800 p-4 sticky top-0 flex justify-between items-center text-white px-8">
+              <button onClick={() => setIsPreviewing(false)} className="px-4 py-2 font-bold text-sm bg-slate-700 rounded-xl uppercase">← Kembali Edit</button>
+              <button onClick={handleDirectPrint} disabled={uploading} className="px-6 py-2 bg-blue-600 rounded-xl font-bold uppercase shadow-xl flex gap-2">
+                {uploading ? <Loader2 className="animate-spin"/> : <Printer size={16}/>} CETAK PDF
+              </button>
+           </div>
+           <div className="flex justify-center p-8">
+              <div className="bg-white w-[215mm] min-h-[330mm] p-[2.54cm] text-black font-serif relative shadow-2xl">
+                 <div className="border-b-4 border-black pb-4 mb-6 flex items-center gap-6">
+                    <img src={LOGO_URL} className="w-24 h-auto" crossOrigin="anonymous" alt="Logo"/>
+                    <div className="flex-1 text-center">
+                       <h3 className="text-[13pt] font-bold">PERSATUAN GURU REPUBLIK INDONESIA</h3>
+                       <h2 className="text-[18pt] font-black leading-none">PENGURUS RANTING KALIJAGA</h2>
+                       <p className="text-[8pt] mt-2 italic">Jl. Teratai Raya No 1 Kalijaga Permai Kota Cirebon</p>
+                    </div>
+                 </div>
+                 <div className="text-[12pt] space-y-6">
+                    <div className="flex justify-between">
+                       <p>Nomor : {formData.no_urut}/...<br/>Perihal : {formData.perihal}</p>
+                       <p className="text-right italic">Cirebon, {new Date().toLocaleDateString('id-ID', {day:'numeric', month:'long', year:'numeric'})}</p>
+                    </div>
+                    <p className="font-bold">Kepada Yth,<br/>{formData.tujuan}</p>
+                    <p className="whitespace-pre-line text-justify">{formData.pembuka}</p>
+                    <p className="whitespace-pre-line text-justify">{formData.isi_utama}</p>
+                    <p className="whitespace-pre-line text-justify">{formData.penutup}</p>
+                    <div className="mt-12 text-center">
+                       <p className="font-bold">PENGURUS PGRI RANTING KALIJAGA</p>
+                       <div className="flex justify-center -mt-4">
+                           <img src={customSignature || URL_TTD_DEFAULT} className="w-full max-w-[500px] object-contain" alt="TTD"/>
+                       </div>
+                    </div>
+                 </div>
+              </div>
+           </div>
+        </div>
+      )}
     </div>
   );
 };
