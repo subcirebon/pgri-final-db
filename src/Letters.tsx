@@ -1,218 +1,354 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Mail, Upload, Send, Plus, Edit, Trash2, X, Lock, FileCheck, Paperclip, Eye, AlertCircle } from 'lucide-react';
+import { supabase } from './supabaseClient';
+import { 
+  Inbox, Send, Printer, Plus, Save, FileText, Eye, X, Loader2, 
+  ArrowLeft, History, Upload, FileUp, Image as ImageIcon, Search, Lock
+} from 'lucide-react';
 
-interface IncomingLetter { id: number; letterNumber: string; date: string; sender: string; subject: string; file: string; }
-interface OutgoingLetter { id: number; letterNumber: string; date: string; recipient: string; subject: string; status: 'Draft' | 'Menunggu TTD' | 'Terkirim'; file?: string; }
+// --- CONFIG PDFMAKE ---
+import pdfMake from "pdfmake/build/pdfmake";
+import pdfFonts from "pdfmake/build/vfs_fonts";
+
+// Inisialisasi VFS Font
+// @ts-ignore
+if (pdfFonts && pdfFonts.pdfMake && pdfFonts.pdfMake.vfs) {
+    // @ts-ignore
+    pdfMake.vfs = pdfFonts.pdfMake.vfs;
+}
+
+pdfMake.fonts = { 
+  Times: { 
+    normal: 'Roboto-Regular.ttf', 
+    bold: 'Roboto-Medium.ttf', 
+    italics: 'Roboto-Italic.ttf', 
+    bolditalics: 'Roboto-MediumItalic.ttf' 
+  } 
+};
+
+const LOGO_URL = "https://upload.wikimedia.org/wikipedia/commons/2/2a/Persatuan_Guru_Republik_Indonesia.png";
+const URL_TTD_DEFAULT = "https://vuzwlgwzhiuosgeohhjl.supabase.co/storage/v1/object/public/letters-archive/ttd-surat.png";
+
+const getBase64ImageFromURL = (url: string): Promise<string> => {
+  return new Promise((resolve) => {
+    const fallback = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+    const img = new Image();
+    img.setAttribute("crossOrigin", "anonymous");
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width; canvas.height = img.height;
+        const ctx = canvas.getContext("2d");
+        if(ctx) { ctx.drawImage(img, 0, 0); resolve(canvas.toDataURL("image/png")); } else { resolve(fallback); }
+      } catch (e) { resolve(fallback); }
+    };
+    img.onerror = () => resolve(fallback);
+    img.src = url + '?t=' + new Date().getTime();
+  });
+};
 
 const Letters = () => {
-  const { userRole } = useOutletContext<{ userRole: string }>();
-  const canManage = userRole === 'super_admin' || userRole === 'admin';
-  const canDelete = userRole === 'super_admin';
+  const { userRole, userName } = useOutletContext<{ userRole: string, userName: string }>();
+  const isAdmin = userRole === 'super_admin' || userRole === 'admin';
 
-  const [activeTab, setActiveTab] = useState<'incoming' | 'outgoing' | 'request'>('incoming');
+  const [activeTab, setActiveTab] = useState<'create' | 'in' | 'out'>(isAdmin ? 'create' : 'in');
+  const [isPreviewing, setIsPreviewing] = useState(false);
+  const [loadingData, setLoadingData] = useState(true);
+  const [uploading, setUploading] = useState(false);
   
-  // DATA DUMMY
-  const [incomingLetters, setIncomingLetters] = useState<IncomingLetter[]>([{ id: 1, letterNumber: '005/DISDIK/I/2026', date: '2026-01-20', sender: 'Dinas Pendidikan', subject: 'Undangan Sosialisasi', file: 'Undangan.pdf' }]);
-  const [outgoingLetters, setOutgoingLetters] = useState<OutgoingLetter[]>([
-    { id: 1, letterNumber: '001/PGRI-RT/I/2026', date: '2026-01-22', recipient: 'Anggota', subject: 'Undangan Rapat', status: 'Terkirim', file: 'Bukti.pdf' },
-    { id: 2, letterNumber: '002/PGRI-RT/I/2026', date: '2026-01-25', recipient: 'Camat', subject: 'Permohonan Audiensi', status: 'Draft', file: '' }
-  ]);
-  
-  // STATE MODAL
-  const [showIncomingModal, setShowIncomingModal] = useState(false);
-  const [showOutgoingModal, setShowOutgoingModal] = useState(false);
-  const [previewFile, setPreviewFile] = useState<string | null>(null);
+  const [lettersIn, setLettersIn] = useState<any[]>([]);
+  const [lettersOut, setLettersOut] = useState<any[]>([]);
+  const [lastLetter, setLastLetter] = useState<string>('-');
 
-  // STATE FORM
-  const [incomingForm, setIncomingForm] = useState({ id: 0, letterNumber: '', date: '', sender: '', subject: '', file: '' });
-  const [outgoingForm, setOutgoingForm] = useState<{id: number, letterNumber: string, date: string, recipient: string, subject: string, status: string, file: string}>({ id: 0, letterNumber: '', date: '', recipient: '', subject: '', status: 'Draft', file: '' });
-  const [requestData, setRequestData] = useState({ name: '', nip: '', type: 'Surat Keterangan Aktif', purpose: '', notes: '' });
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [activeUploadId, setActiveUploadId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [customSignature, setCustomSignature] = useState<string | null>(null);
 
-  // HANDLERS
-  const handleIncomingSubmit = (e: React.FormEvent) => { 
-    e.preventDefault(); 
-    if(!incomingForm.file) return alert('Wajib upload file surat masuk!'); // VALIDASI
-    setIncomingLetters([...incomingLetters, { ...incomingForm, id: Date.now() } as any]); setShowIncomingModal(false); 
-  };
-  
-  const handleOutgoingSubmit = (e: React.FormEvent) => { 
-    e.preventDefault(); 
-    // Jika update, cari index dan ganti. Jika baru, push.
-    // (Di sini saya sederhanakan untuk simulasi add/edit yg digabung di state form)
-    if (outgoingForm.id !== 0) {
-       // Edit Mode
-       setOutgoingLetters(outgoingLetters.map(l => l.id === outgoingForm.id ? { ...l, ...outgoingForm } as any : l));
-    } else {
-       // Add Mode
-       setOutgoingLetters([...outgoingLetters, { ...outgoingForm, id: Date.now() } as any]); 
-    }
-    setShowOutgoingModal(false); 
-  };
+  const [showInModal, setShowInModal] = useState(false);
+  const [inForm, setInForm] = useState({ sender: '', subject: '', file: null as File | null });
 
-  const handleEditOutgoing = (l: OutgoingLetter) => {
-    setOutgoingForm({ ...l, status: l.status as any }); // Load data to form
-    setShowOutgoingModal(true);
+  const [formData, setFormData] = useState({
+    no_urut: '001', lampiran: '-', perihal: '', tujuan: 'Yth. ', 
+    pembuka: 'Assalamualaikum Wr. Wb.\n\nDengan hormat, ',
+    isi_utama: '', acara: '', hari: '', tanggal_acara: '', waktu: '', tempat: '',
+    penutup: 'Demikian surat ini kami sampaikan, atas perhatiannya kami ucapkan terima kasih.\n\nWassalamualaikum Wr. Wb.'
+  });
+
+  const LETTER_TYPES = [
+    { label: 'Surat Undangan', code: 'Und', formType: 'invitation' },
+    { label: 'Surat Tugas', code: 'Tgs', formType: 'formal' },
+    { label: 'Surat Keterangan', code: 'Ket', formType: 'general' },
+    { label: 'Surat Biasa', code: 'Um', formType: 'general' }
+  ];
+  const [selectedType, setSelectedType] = useState(LETTER_TYPES[0]);
+
+  const fetchData = async () => {
+    setLoadingData(true);
+    try {
+      const { data: dataIn } = await supabase.from('letters_in').select('*').order('created_at', { ascending: false });
+      const { data: dataOut } = await supabase.from('letters_out').select('*').order('created_at', { ascending: false });
+      setLettersIn(dataIn || []);
+      setLettersOut(dataOut || []);
+      if (dataOut?.[0]) setLastLetter(dataOut[0].letter_number);
+    } catch (e) { console.error(e); } finally { setLoadingData(false); }
   };
 
-  const handleDeleteIncoming = (id: number) => { if(window.confirm('Hapus?')) setIncomingLetters(incomingLetters.filter(l => l.id !== id)); };
-  const handleDeleteOutgoing = (id: number) => { if(window.confirm('Hapus?')) setOutgoingLetters(outgoingLetters.filter(l => l.id !== id)); };
-  
-  // Fungsi Helper Upload
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'in' | 'out') => {
-    if (e.target.files && e.target.files[0]) {
-      const url = URL.createObjectURL(e.target.files[0]); // Simulasi Link
-      if (type === 'in') setIncomingForm({ ...incomingForm, file: url });
-      else setOutgoingForm({ ...outgoingForm, file: url });
+  useEffect(() => { fetchData(); }, []);
+
+  // --- HANDLER TTD ---
+  const handleSignatureLocalUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => setCustomSignature(reader.result as string);
+      reader.readAsDataURL(file);
     }
   };
+
+  // --- HANDLER UPLOAD ARSIP KELUAR ---
+  const triggerUploadArchive = (id: string) => {
+    if(!isAdmin) return;
+    setActiveUploadId(id);
+    if (fileInputRef.current) fileInputRef.current.click();
+  };
+
+  const handleArchiveFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeUploadId) return;
+    setUploadingId(activeUploadId);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `outgoing/${Date.now()}_arsip.${fileExt}`;
+      await supabase.storage.from('letters-archive').upload(fileName, file);
+      const { data } = supabase.storage.from('letters-archive').getPublicUrl(fileName);
+      await supabase.from('letters_out').update({ file_url: data.publicUrl }).eq('id', activeUploadId);
+      alert("Berhasil!"); fetchData(); 
+    } catch (err: any) { alert(err.message); } finally { setUploadingId(null); }
+  };
+
+  // --- SIMPAN SURAT MASUK ---
+  const handleSaveIncoming = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inForm.file) return alert("Pilih file!");
+    setUploading(true);
+    try {
+      const fileExt = inForm.file.name.split('.').pop();
+      const fileName = `incoming/${Date.now()}_masuk.${fileExt}`;
+      await supabase.storage.from('letters-archive').upload(fileName, inForm.file);
+      const { data: urlData } = supabase.storage.from('letters-archive').getPublicUrl(fileName);
+      const { error: dbErr } = await supabase.from('letters_in').insert([{ 
+        sender: inForm.sender, subject: inForm.subject, file_url: urlData.publicUrl, date_received: new Date().toISOString()
+      }]);
+      if (dbErr) throw dbErr;
+      alert('Berhasil!'); setShowInModal(false); fetchData();
+    } catch (err: any) { alert("Gagal: " + err.message); } finally { setUploading(false); }
+  };
+
+  // --- CETAK PDF & SIMPAN SURAT KELUAR ---
+  const handleDirectPrint = async () => {
+    setUploading(true);
+    try {
+      const fullNo = `${formData.no_urut}/${selectedType.code}/0701-04/XXIII/2026`;
+      const titiMangsa = `Cirebon, ${new Date().toLocaleDateString('id-ID', {day: 'numeric', month: 'long', year: 'numeric'})}`;
+      const logo = await getBase64ImageFromURL(LOGO_URL);
+      const ttd = customSignature || await getBase64ImageFromURL(URL_TTD_DEFAULT);
+
+      // Simpan data ke tabel letters_out
+      const { error: dbErr } = await supabase.from('letters_out').insert([{ 
+        letter_number: fullNo, 
+        recipient: formData.tujuan, 
+        subject: selectedType.label + " " + formData.perihal 
+      }]);
+      if (dbErr) throw dbErr;
+
+      const docDef: any = {
+        pageSize: 'FOLIO', pageMargins: [72, 40, 72, 72], defaultStyle: { font: 'Times', fontSize: 12 },
+        content: [
+          { columns: [{ image: logo, width: 85 }, { width: '*', stack: [{ text: 'PERSATUAN GURU REPUBLIK INDONESIA', bold: true, fontSize: 13 }, { text: 'PENGURUS RANTING KALIJAGA', bold: true, fontSize: 18 }, {text: 'Jl. Teratai Raya No 1 Kalijaga Permai Kota Cirebon', fontSize: 9}], alignment: 'center' }] },
+          { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 470, y2: 0, lineWidth: 2 }], margin: [0, 5, 0, 20] },
+          { columns: [{ width: '*', text: `Nomor : ${fullNo}\nPerihal : ${formData.perihal}` }, { width: 'auto', text: titiMangsa, alignment: 'right' }] },
+          { text: '\nKepada Yth,\n' + formData.tujuan, bold: true, margin: [0, 15, 0, 15] },
+          { text: formData.pembuka, alignment: 'justify' },
+          selectedType.formType === 'invitation' ? { 
+              margin: [30, 10, 0, 10], table: { widths: [80, 10, '*'], body: [['Acara', ':', formData.acara], ['Hari', ':', formData.hari], ['Tanggal', ':', formData.tanggal_acara], ['Waktu', ':', formData.waktu], ['Tempat', ':', formData.tempat]] }, layout: 'noBorders' 
+          } : { text: formData.isi_utama, alignment: 'justify', margin: [0, 10, 0, 10] },
+          { text: formData.penutup, alignment: 'justify' },
+          { stack: [{ text: '\nPENGURUS PGRI RANTING KALIJAGA', bold: true }], alignment: 'center' },
+          { image: ttd, width: 520, alignment: 'center', margin: [0, -10, 0, 0] }
+        ]
+      };
+      pdfMake.createPdf(docDef).open();
+      fetchData(); setIsPreviewing(false); setActiveTab('out');
+    } catch (e: any) { alert("Gagal Cetak: " + e.message); } finally { setUploading(false); }
+  };
+
+  if (loadingData) return <div className="h-screen flex items-center justify-center text-gray-400 font-bold animate-pulse">Menyiapkan Berkas...</div>;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row justify-between gap-4">
-        <div><h1 className="text-2xl font-bold text-gray-800">Surat Menyurat</h1><p className="text-gray-500">Arsip Digital Surat Masuk & Keluar</p></div>
+    <div className="p-6 space-y-6">
+      <input type="file" ref={fileInputRef} onChange={handleArchiveFileChange} className="hidden" />
+      
+      {/* HEADER */}
+      <div className="flex justify-between items-center bg-white p-6 rounded-[32px] border shadow-sm">
+        <h1 className="text-xl font-bold uppercase italic text-gray-800 tracking-tighter">Administrasi Surat</h1>
+        <div className="flex bg-gray-100 p-1 rounded-2xl">
+          {isAdmin && <button onClick={() => setActiveTab('create')} className={`px-4 py-2 rounded-xl text-xs font-bold ${activeTab === 'create' ? 'bg-white shadow-sm text-red-700' : 'text-gray-400'}`}>BUAT SURAT</button>}
+          <button onClick={() => setActiveTab('in')} className={`px-4 py-2 rounded-xl text-xs font-bold ${activeTab === 'in' ? 'bg-white shadow-sm text-blue-700' : 'text-gray-400'}`}>SURAT MASUK</button>
+          <button onClick={() => setActiveTab('out')} className={`px-4 py-2 rounded-xl text-xs font-bold ${activeTab === 'out' ? 'bg-white shadow-sm text-green-700' : 'text-gray-400'}`}>SURAT KELUAR</button>
+        </div>
       </div>
 
-      <div className="bg-white p-1 rounded-xl shadow-sm border border-gray-200 inline-flex flex-wrap gap-1">
-        <button onClick={() => setActiveTab('incoming')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 ${activeTab === 'incoming' ? 'bg-red-700 text-white' : 'text-gray-600'}`}><Mail size={16} /> Masuk</button>
-        <button onClick={() => setActiveTab('outgoing')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 ${activeTab === 'outgoing' ? 'bg-red-700 text-white' : 'text-gray-600'}`}><Send size={16} /> Keluar</button>
-        <button onClick={() => setActiveTab('request')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 ${activeTab === 'request' ? 'bg-red-700 text-white' : 'text-gray-600'}`}><FileCheck size={16} /> Ajukan Surat</button>
-      </div>
-
-      {/* TAB 1: SURAT MASUK */}
-      {activeTab === 'incoming' && (
-        <div className="space-y-4 animate-in fade-in">
-          <div className="flex justify-between items-center bg-blue-50 p-4 rounded-xl border border-blue-100">
-            <div className="flex items-center gap-3"><div className="bg-white p-2 rounded-full text-blue-600"><Mail /></div><div><h3 className="font-bold text-blue-800">Arsip Surat Masuk</h3></div></div>
-            {canManage && <button onClick={() => { setIncomingForm({ id: 0, letterNumber: '', date: '', sender: '', subject: '', file: '' }); setShowIncomingModal(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2"><Upload size={16} /> Upload</button>}
-          </div>
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-             <table className="w-full text-left">
-                <thead className="bg-gray-50 border-b border-gray-100"><tr><th className="p-4">No. Surat</th><th className="p-4">Perihal</th><th className="p-4">File</th><th className="p-4 text-right">Aksi</th></tr></thead>
-                <tbody className="divide-y divide-gray-100">{incomingLetters.map(l => (
-                  <tr key={l.id}><td className="p-4">{l.letterNumber}</td><td className="p-4">{l.subject}</td>
-                  <td className="p-4"><button onClick={()=>setPreviewFile(l.file)} className="text-blue-600 hover:underline flex items-center gap-1 text-sm"><Paperclip size={14}/> Lihat</button></td>
-                  <td className="p-4 text-right">
-                    {canManage ? (
-                       <div className="flex justify-end gap-2"><button className="p-1.5 text-indigo-600 bg-indigo-50 rounded"><Edit size={16}/></button>
-                       {canDelete && <button onClick={() => handleDeleteIncoming(l.id)} className="p-1.5 text-red-600 bg-red-50 rounded"><Trash2 size={16}/></button>}</div>
-                    ) : <span className="text-gray-300"><Lock size={14} className="inline"/></span>}
-                  </td></tr>
-                ))}</tbody>
-             </table>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 2: SURAT KELUAR */}
-      {activeTab === 'outgoing' && (
-        <div className="space-y-4 animate-in fade-in">
-          <div className="flex justify-between items-center bg-orange-50 p-4 rounded-xl border border-orange-100">
-            <div className="flex items-center gap-3"><div className="bg-white p-2 rounded-full text-orange-600"><Send /></div><div><h3 className="font-bold text-orange-800">Surat Keluar</h3></div></div>
-            {canManage && <button onClick={() => { setOutgoingForm({ id: 0, letterNumber: '', date: '', recipient: '', subject: '', status: 'Draft', file: '' }); setShowOutgoingModal(true); }} className="bg-orange-600 text-white px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2"><Plus size={16} /> Buat Baru</button>}
-          </div>
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-             <table className="w-full text-left">
-                <thead className="bg-gray-50 border-b border-gray-100"><tr><th className="p-4">No. Surat</th><th className="p-4">Tujuan</th><th className="p-4">Status</th><th className="p-4 text-center">Bukti Kirim</th><th className="p-4 text-right">Aksi</th></tr></thead>
-                <tbody className="divide-y divide-gray-100">{outgoingLetters.map(l => (
-                  <tr key={l.id}><td className="p-4">{l.letterNumber}</td><td className="p-4">{l.recipient}</td>
-                  <td className="p-4"><span className={`px-2 py-1 rounded text-xs border ${l.status === 'Terkirim' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>{l.status}</span></td>
-                  
-                  {/* KOLOM BUKTI: MUNCUL JIKA TERKIRIM */}
-                  <td className="p-4 text-center">
-                    {l.status === 'Terkirim' && l.file ? (
-                      <button onClick={()=>setPreviewFile(l.file || '')} className="text-blue-600 hover:bg-blue-50 p-1.5 rounded flex items-center gap-1 justify-center mx-auto text-xs font-bold"><Eye size={14}/> Lihat</button>
-                    ) : (
-                      <span className="text-gray-300 text-xs">-</span>
-                    )}
-                  </td>
-
-                  <td className="p-4 text-right">
-                    {canManage ? (
-                       <div className="flex justify-end gap-2">
-                         <button onClick={() => handleEditOutgoing(l)} className="p-1.5 text-indigo-600 bg-indigo-50 rounded" title="Edit / Update Status"><Edit size={16}/></button>
-                         {canDelete && <button onClick={() => handleDeleteOutgoing(l.id)} className="p-1.5 text-red-600 bg-red-50 rounded"><Trash2 size={16}/></button>}
-                       </div>
-                    ) : <span className="text-gray-300"><Lock size={14} className="inline"/></span>}
-                  </td></tr>
-                ))}</tbody>
-             </table>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 3: PENGAJUAN (User Only/All) */}
-      {activeTab === 'request' && (
-        <div className="max-w-xl mx-auto bg-white p-6 rounded-2xl shadow-lg border border-gray-100">
-           <h3 className="font-bold text-lg mb-4">Formulir Pengajuan Surat</h3>
-           {/* (Formulir pengajuan surat sama seperti sebelumnya, kirim ke WA) */}
-           <form className="space-y-3" onSubmit={(e) => {e.preventDefault(); window.open('https://wa.me/6281234567890?text=Request Surat...', '_blank')}}>
-             <input required className="w-full p-3 border rounded-lg bg-gray-50" placeholder="Nama Lengkap"/>
-             <input required className="w-full p-3 border rounded-lg bg-gray-50" placeholder="Keperluan"/>
-             <button className="w-full bg-green-600 text-white py-3 rounded-lg font-bold">Kirim Pengajuan (WA)</button>
-           </form>
-        </div>
-      )}
-
-      {/* MODAL SURAT MASUK (ADMIN ONLY) */}
-      {showIncomingModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white p-6 rounded-lg w-full max-w-md space-y-4">
-            <h3 className="font-bold">Upload Surat Masuk</h3>
-            <input className="border w-full p-2 rounded" placeholder="No Surat" value={incomingForm.letterNumber} onChange={e=>setIncomingForm({...incomingForm, letterNumber: e.target.value})}/>
-            <input className="border w-full p-2 rounded" placeholder="Perihal" value={incomingForm.subject} onChange={e=>setIncomingForm({...incomingForm, subject: e.target.value})}/>
-            <div className="border border-dashed p-4 text-center bg-gray-50 rounded">
-               <input type="file" onChange={e => handleFileUpload(e, 'in')} className="text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
+      {/* VIEW BUAT SURAT */}
+      {activeTab === 'create' && isAdmin && !isPreviewing && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+           <div className="lg:col-span-2 bg-white p-8 rounded-[32px] border shadow-sm space-y-6">
+            <div className="grid grid-cols-2 gap-4">
+                <select className="p-3 bg-red-50 border border-red-100 rounded-xl font-bold" value={selectedType.code} onChange={(e) => { const type = LETTER_TYPES.find(t => t.code === e.target.value); if(type) setSelectedType(type); }}>
+                    {LETTER_TYPES.map(t => <option key={t.code} value={t.code}>{t.label}</option>)}
+                </select>
+                <input className="p-3 border rounded-xl font-bold" placeholder="No Urut (001)" value={formData.no_urut} onChange={e => setFormData({...formData, no_urut: e.target.value})} />
             </div>
-            <button onClick={handleIncomingSubmit} className="bg-blue-600 text-white w-full py-2 rounded">Simpan Arsip</button>
-            <button onClick={()=>setShowIncomingModal(false)} className="w-full text-gray-500 text-sm mt-2">Batal</button>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL SURAT KELUAR (ADMIN ONLY) - LOGIKA UPLOAD SETELAH TERKIRIM */}
-      {showOutgoingModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white p-6 rounded-lg w-full max-w-md space-y-4">
-            <h3 className="font-bold">{outgoingForm.id === 0 ? 'Buat Surat Keluar' : 'Edit Surat Keluar'}</h3>
-            <input className="border w-full p-2 rounded" placeholder="No Surat" value={outgoingForm.letterNumber} onChange={e=>setOutgoingForm({...outgoingForm, letterNumber: e.target.value})}/>
-            <input className="border w-full p-2 rounded" placeholder="Tujuan" value={outgoingForm.recipient} onChange={e=>setOutgoingForm({...outgoingForm, recipient: e.target.value})}/>
+            <input className="w-full p-3 border rounded-xl font-bold" placeholder="Perihal" value={formData.perihal} onChange={e => setFormData({...formData, perihal: e.target.value})} />
+            <textarea rows={2} className="w-full p-3 border rounded-xl font-bold" placeholder="Tujuan (Yth. ...)" value={formData.tujuan} onChange={e => setFormData({...formData, tujuan: e.target.value})} />
             
-            {/* DROPDOWN STATUS */}
-            <div>
-              <label className="text-xs font-bold text-gray-500 uppercase">Status Surat</label>
-              <select className="border w-full p-2 rounded mt-1" value={outgoingForm.status} onChange={e=>setOutgoingForm({...outgoingForm, status: e.target.value as any})}>
-                <option value="Draft">Draft (Konsep)</option>
-                <option value="Menunggu TTD">Menunggu Tanda Tangan</option>
-                <option value="Terkirim">Terkirim (Selesai)</option>
-              </select>
-            </div>
-
-            {/* UPLOAD MUNCUL HANYA JIKA STATUS TERKIRIM */}
-            {outgoingForm.status === 'Terkirim' && (
-              <div className="border border-orange-200 bg-orange-50 p-3 rounded-lg animate-in fade-in">
-                <p className="text-xs font-bold text-orange-800 mb-2 flex items-center gap-1"><AlertCircle size={12}/> Upload Bukti Kirim / Scan Surat</p>
-                <input type="file" onChange={e => handleFileUpload(e, 'out')} className="text-sm w-full text-gray-500 file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:bg-white file:text-orange-700"/>
-                {outgoingForm.file && <p className="text-xs text-green-600 mt-1 font-bold">File siap disimpan.</p>}
+            {selectedType.formType === 'invitation' ? (
+              <div className="bg-blue-50 p-6 rounded-2xl space-y-4 border-2 border-dashed border-blue-100">
+                <input className="w-full p-3 border rounded-xl font-bold" placeholder="Nama Acara" value={formData.acara} onChange={e => setFormData({...formData, acara: e.target.value})} />
+                <div className="grid grid-cols-2 gap-4">
+                  <input className="p-3 border rounded-xl" placeholder="Hari" value={formData.hari} onChange={e => setFormData({...formData, hari: e.target.value})} />
+                  <input className="p-3 border rounded-xl" placeholder="Tanggal" value={formData.tanggal_acara} onChange={e => setFormData({...formData, tanggal_acara: e.target.value})} />
+                  <input className="p-3 border rounded-xl" placeholder="Waktu" value={formData.waktu} onChange={e => setFormData({...formData, waktu: e.target.value})} />
+                  <input className="p-3 border rounded-xl" placeholder="Tempat" value={formData.tempat} onChange={e => setFormData({...formData, tempat: e.target.value})} />
+                </div>
               </div>
-            )}
+            ) : <textarea rows={8} className="w-full p-3 border rounded-xl" placeholder="Isi Utama Surat" value={formData.isi_utama} onChange={e => setFormData({...formData, isi_utama: e.target.value})} />}
+            
+            <div className="p-6 bg-yellow-50 border border-yellow-100 rounded-2xl flex items-center gap-4">
+                <ImageIcon className="text-yellow-600"/>
+                <div className="flex-1">
+                    <p className="text-[10px] font-bold text-yellow-800 uppercase mb-1">Upload TTD Khusus (Opsional)</p>
+                    <input type="file" accept="image/*" onChange={handleSignatureLocalUpload} className="text-xs" />
+                </div>
+            </div>
+            <button onClick={() => setIsPreviewing(true)} className="w-full bg-slate-800 text-white py-4 rounded-2xl font-bold uppercase shadow-lg">Preview Visual</button>
+           </div>
+           <div className="space-y-4">
+               <div className="bg-gray-800 p-6 rounded-[32px] text-white">
+                   <p className="text-[10px] font-bold uppercase opacity-50 mb-2">Terakhir Dibuat:</p>
+                   <p className="font-mono text-sm break-all">{lastLetter}</p>
+               </div>
+           </div>
+        </div>
+      )}
 
-            <button onClick={handleOutgoingSubmit} className="bg-orange-600 text-white w-full py-2 rounded">Simpan</button>
-            <button onClick={()=>setShowOutgoingModal(false)} className="w-full text-gray-500 text-sm mt-2">Batal</button>
+      {/* VIEW SURAT MASUK */}
+      {activeTab === 'in' && (
+        <div className="space-y-4">
+          <div className="flex justify-between items-center">
+             <h3 className="font-bold text-gray-700 uppercase italic">Arsip Masuk</h3>
+             {isAdmin && <button onClick={() => setShowInModal(true)} className="bg-blue-600 text-white px-6 py-2 rounded-xl font-bold text-xs uppercase flex items-center gap-2 transition-all hover:bg-blue-700"><Plus size={16}/> Catat Baru</button>}
+          </div>
+          <div className="bg-white rounded-3xl border p-4 shadow-sm">
+             {lettersIn.map(l => (
+               <div key={l.id} className="p-4 border-b last:border-0 flex justify-between items-center hover:bg-gray-50 rounded-xl transition-all">
+                 <div><p className="font-bold text-sm uppercase">{l.subject}</p><p className="text-[10px] text-gray-400 font-bold uppercase">{l.sender}</p></div>
+                 {l.file_url && <a href={l.file_url} target="_blank" rel="noreferrer" className="text-blue-600 text-[10px] font-bold border border-blue-100 px-3 py-1.5 rounded-lg hover:bg-blue-600 hover:text-white">LIHAT PDF</a>}
+               </div>
+             ))}
+             {lettersIn.length === 0 && <p className="text-center text-gray-400 py-10">Belum ada arsip masuk.</p>}
           </div>
         </div>
       )}
 
-      {/* MODAL PREVIEW */}
-      {previewFile && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => setPreviewFile(null)}>
-          <div className="relative max-w-3xl w-full bg-white p-2 rounded h-[80vh] flex flex-col">
-            <div className="flex justify-between p-2 border-b"><h3 className="font-bold">Preview Dokumen</h3><button onClick={()=>setPreviewFile(null)}><X/></button></div>
-            <div className="flex-1 bg-gray-100 flex items-center justify-center overflow-hidden">
-               {/* Gunakan iframe untuk PDF atau img untuk gambar */}
-               <iframe src={previewFile} className="w-full h-full" title="Preview"></iframe>
-            </div>
-          </div>
+      {/* VIEW SURAT KELUAR */}
+      {activeTab === 'out' && (
+        <div className="bg-white rounded-[32px] border p-6 shadow-sm">
+           <h3 className="font-bold text-gray-800 uppercase italic mb-6">Database Surat Keluar</h3>
+           <div className="space-y-2">
+             {lettersOut.map(l => (
+               <div key={l.id} className="p-4 bg-gray-50 border rounded-2xl flex justify-between items-center hover:bg-white transition-all">
+                 <div><p className="font-bold text-sm uppercase">{l.subject}</p><p className="text-[10px] text-gray-400 font-bold uppercase">No: {l.letter_number}</p></div>
+                 <div className="flex gap-2">
+                    {l.file_url ? <a href={l.file_url} target="_blank" rel="noreferrer" className="text-green-600 text-[10px] font-bold border border-green-100 px-3 py-1.5 rounded-lg">BERKAS</a> : <button onClick={() => triggerUploadArchive(l.id)} className="text-orange-600 text-[10px] font-bold border border-orange-100 px-3 py-1.5 rounded-lg">UPLOAD SCAN</button>}
+                 </div>
+               </div>
+             ))}
+             {lettersOut.length === 0 && <p className="text-center text-gray-400 py-10">Belum ada surat keluar tercatat.</p>}
+           </div>
+        </div>
+      )}
+
+      {/* MODAL SURAT MASUK */}
+      {showInModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+           <div className="bg-white w-full max-w-md rounded-[32px] p-8 shadow-2xl relative">
+              <button onClick={() => setShowInModal(false)} className="absolute top-6 right-6 text-gray-400 hover:text-red-600 transition-colors"><X size={24}/></button>
+              <h3 className="font-black italic text-xl mb-6 uppercase">Arsipkan Surat</h3>
+              <form onSubmit={handleSaveIncoming} className="space-y-4">
+                <input type="text" placeholder="Instansi Pengirim" required className="w-full p-3 border-2 border-gray-100 rounded-xl font-bold outline-none focus:border-blue-600" value={inForm.sender} onChange={e => setInForm({...inForm, sender: e.target.value})} />
+                <input type="text" placeholder="Perihal / Judul Surat" required className="w-full p-3 border-2 border-gray-100 rounded-xl font-bold outline-none focus:border-blue-600" value={inForm.subject} onChange={e => setInForm({...inForm, subject: e.target.value})} />
+                <div className="p-6 bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl text-center">
+                   <input type="file" required onChange={e => setInForm({...inForm, file: e.target.files?.[0] || null})} className="text-xs" />
+                </div>
+                <button disabled={uploading} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold uppercase shadow-lg disabled:bg-gray-400 flex justify-center">
+                  {uploading ? <Loader2 className="animate-spin"/> : 'Simpan Arsip'}
+                </button>
+              </form>
+           </div>
+        </div>
+      )}
+
+      {/* PREVIEW DAN CETAK */}
+      {isPreviewing && (
+        <div className="fixed inset-0 bg-gray-900 z-50 overflow-y-auto">
+           <div className="bg-slate-800 p-4 sticky top-0 flex justify-between items-center text-white px-8">
+              <button onClick={() => setIsPreviewing(false)} className="px-4 py-2 font-bold text-sm bg-slate-700 rounded-xl uppercase">← Kembali Edit</button>
+              <button onClick={handleDirectPrint} disabled={uploading} className="px-6 py-2 bg-blue-600 rounded-xl font-bold uppercase shadow-xl flex gap-2">
+                {uploading ? <Loader2 className="animate-spin"/> : <Printer size={16}/>} CETAK PDF & SIMPAN
+              </button>
+           </div>
+           <div className="flex justify-center p-8">
+              <div className="bg-white w-[215mm] min-h-[330mm] p-[2.54cm] text-black font-serif relative shadow-2xl">
+                 <div className="border-b-4 border-black pb-4 mb-6 flex items-center gap-6">
+                    <img src={LOGO_URL} className="w-24 h-auto" crossOrigin="anonymous" alt="Logo"/>
+                    <div className="flex-1 text-center">
+                       <h3 className="text-[13pt] font-bold">PERSATUAN GURU REPUBLIK INDONESIA</h3>
+                       <h2 className="text-[18pt] font-black leading-none">PENGURUS RANTING KALIJAGA</h2>
+                       <p className="text-[8pt] mt-2 italic">Jl. Teratai Raya No 1 Kalijaga Permai Kota Cirebon</p>
+                    </div>
+                 </div>
+                 <div className="text-[12pt] space-y-6">
+                    <div className="flex justify-between">
+                       <p>Nomor : {formData.no_urut}/...<br/>Perihal : {formData.perihal}</p>
+                       <p className="text-right italic">Cirebon, {new Date().toLocaleDateString('id-ID', {day:'numeric', month:'long', year:'numeric'})}</p>
+                    </div>
+                    <p className="font-bold">Kepada Yth,<br/>{formData.tujuan}</p>
+                    <p className="whitespace-pre-line text-justify">{formData.pembuka}</p>
+                    
+                    {selectedType.formType === 'invitation' && (
+                       <div className="ml-8 my-4 border-l-4 border-gray-100 pl-4">
+                          <table><tbody>
+                             <tr><td className="w-24 font-bold">Acara</td><td>: {formData.acara}</td></tr>
+                             <tr><td>Hari</td><td>: {formData.hari}</td></tr>
+                             <tr><td>Tanggal</td><td>: {formData.tanggal_acara}</td></tr>
+                             <tr><td>Waktu</td><td>: {formData.waktu}</td></tr>
+                             <tr><td>Tempat</td><td>: {formData.tempat}</td></tr>
+                          </tbody></table>
+                       </div>
+                    )}
+
+                    <p className="whitespace-pre-line text-justify">{selectedType.formType !== 'invitation' ? formData.isi_utama : ""}</p>
+                    <p className="whitespace-pre-line text-justify">{formData.penutup}</p>
+                    <div className="mt-12 text-center">
+                       <p className="font-bold">PENGURUS PGRI RANTING KALIJAGA</p>
+                       <div className="flex justify-center -mt-4">
+                           <img src={customSignature || URL_TTD_DEFAULT} className="w-full max-w-[520px] object-contain" alt="TTD"/>
+                       </div>
+                    </div>
+                 </div>
+              </div>
+           </div>
         </div>
       )}
     </div>
