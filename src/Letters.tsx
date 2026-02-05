@@ -223,7 +223,7 @@ const Letters = () => {
           { text: formData.penutup, alignment: 'justify' },
           
           { stack: [{ text: selectedType.formType === 'formal' ? '' : '\nPENGURUS PGRI CABANG HARJAMUKTI', bold: true }], alignment: 'center' },
-          { image: ttd, width: 520, alignment: 'center', margin: [0, -10, 0, 0] }
+          { image: ttd, width: 480, alignment: 'center', margin: [0, -10, 0, 0] }
         ]
       };
       pdfMake.createPdf(docDef).open();
@@ -411,7 +411,7 @@ const Letters = () => {
                        {selectedType.formType === 'formal' && <p className="mb-2 italic">{titiMangsa}</p>}
                        <p className="font-bold">PENGURUS PGRI CABANG HARJAMUKTI</p>
                        <div className="flex justify-center -mt-4">
-                           <img src={URL_TTD_DEFAULT} className="w-full max-w-[520px] object-contain opacity-95" alt="TTD"/>
+                           <img src={URL_TTD_DEFAULT} className="w-full max-w-[480px] object-contain opacity-95" alt="TTD"/>
                        </div>
                     </div>
                  </div>
