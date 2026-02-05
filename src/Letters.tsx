@@ -187,12 +187,12 @@ const Letters = () => {
               {
                 width: '*',
                 stack: [
-                  { text: 'PERSATUAN GURU REPUBLIK INDONESIA', bold: true, fontSize: 13 },
+                  { text: 'PERSATUAN GURU REPUBLIK INDONESIA', bold: true, fontSize: 14 },
                   { text: 'PENGURUS', bold: true, fontSize: 14 },
-                  { text: 'CABANG HARJAMUKTI', bold: true, fontSize: 18, margin: [0, 2, 0, 2] },
-                  { text: 'Harjamukti Branch', fontSize: 11, italics: true, bold: true, margin: [0, 0, 0, 4] },
-                  { text: 'Sekretariat : Korwil Harjamukti Kec. Harjamukti Kota Cirebon', fontSize: 9 },
-                  { text: 'Jl. Rajawali Barat III RT. 06 RW 04 No. 1 Kec. Harjamukti Kota Cirebon 45143', fontSize: 9 }
+                  { text: 'RANTING KALIJAGA', bold: true, fontSize: 14, margin: [0, 2, 0, 2] },
+                  { text: 'Kalijaga Sub Branch', fontSize: 12, italics: true, bold: true, margin: [0, 0, 0, 4] },
+                  { text: 'Sekretariat : Jl. Teratai Raya No 1 Perum Kalijaga Permai Kel. Kalijaga  Kec. Harjamukti Kota Cirebon 45143', fontSize: 9 },
+                  { text: 'email: pgrikalijaga@gmail.com website: pgrikalijaga.sekolahdasar.online', fontSize: 9 }
                 ],
                 alignment: 'center'
               }
