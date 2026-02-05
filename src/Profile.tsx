@@ -173,7 +173,7 @@ const Profile = () => {
               </div>
               <div>
                 <p className="font-bold text-sm text-blue-100 mb-1">Email:</p>
-                <p className="text-sm">ranting.kalijaga@pgri.or.id</p>
+                <p className="text-sm">pgrikalijaga@gmail.com</p>
               </div>
             </div>
             <div className="flex items-center gap-3 group">
