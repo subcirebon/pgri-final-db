@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 
 // --- URL QRIS ASLI ---
-const QRIS_IMAGE_URL = "https://vuzwlgwzhiuosgeohhjl.supabase.co/storage/v1/object/public/asset/qris-prgi-ranting-kalijaga.jpeg"; 
+const QRIS_IMAGE_URL = "https://vuzwlgwzhiuosgeohhjl.supabase.co/storage/v1/object/public/asset/qris-prgi-ranting-kalijaga%20(1).jpeg"; 
 
 const Dashboard = () => {
   const { userName } = useOutletContext<{ userName: string, userRole: string }>();
