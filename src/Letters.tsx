@@ -222,7 +222,7 @@ const Letters = () => {
           } : { text: formData.isi_utama, alignment: 'justify', margin: [0, 10, 0, 10] },
           { text: formData.penutup, alignment: 'justify' },
           
-          { stack: [{ text: selectedType.formType === 'formal' ? '' : '\nPENGURUS PGRI CABANG HARJAMUKTI', bold: true }], alignment: 'center' },
+          { stack: [{ text: selectedType.formType === 'formal' ? '' : '\nPENGURUS PGRI RANTING KALIJAGA', bold: true }], alignment: 'center' },
           { image: ttd, width: 480, alignment: 'center', margin: [0, -10, 0, 0] }
         ]
       };
