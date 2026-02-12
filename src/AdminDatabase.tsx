@@ -3,39 +3,21 @@ import { useOutletContext } from 'react-router-dom';
 import { supabase } from './supabaseClient';
 import { 
   Search, Phone, Edit, Trash2, FileSpreadsheet, Loader2, 
-  Mail, School, CreditCard, User, Calendar, Plus, X, Users, Briefcase 
+  Mail, School, CreditCard, User, Calendar, Plus, X, Users, Briefcase, Lock, Fingerprint
 } from 'lucide-react';
 
-// Setup XLSX Aman (Agar tidak blank screen jika belum install library)
+// Setup XLSX Aman
 let XLSX: any;
 try { XLSX = require('xlsx'); } catch (e) { console.warn('Library xlsx missing'); }
 
-interface Member {
-  id: number;
-  full_name: string;
-  nip: string;
-  nik: string;
-  birth_place: string;
-  birth_date: string;
-  gender: string;
-  school_name: string;
-  teacher_type: string;
-  phone: string;
-  email: string;
-  status: string;
-  created_at: string;
-}
-
 const Members = () => {
-  // Ambil Role Admin
   const context = useOutletContext<{ userRole: string }>() || {};
   const isAdmin = (context.userRole === 'super_admin' || context.userRole === 'admin');
 
-  const [members, setMembers] = useState<Member[]>([]);
+  const [members, setMembers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   
-  // State Modal (Tambah/Edit)
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState<any>({});
   const [isEditing, setIsEditing] = useState(false);
@@ -47,25 +29,16 @@ const Members = () => {
     const { data, error } = await supabase
       .from('members')
       .select('*')
-      .order('created_at', { ascending: false });
+      .order('full_name', { ascending: true });
     
     if (error) {
       console.error(error);
     } else {
-      // LOGIKA FILTER: Sembunyikan akun Admin/Sekretaris dari tabel
       const filteredData = (data || []).filter(m => {
         const nameUpper = (m.full_name || '').toUpperCase();
-        // Daftar kata kunci yang diblacklist dari tabel anggota
-        const blackList = [
-            'SUPER ADMIN', 
-            'SEKRETARIS', 
-            'SEKERTARIS', 
-            'ADMINISTRATOR'
-        ];
-        // Return true jika nama TIDAK mengandung kata-kata blacklist
+        const blackList = ['SUPER ADMIN', 'SEKRETARIS', 'SEKERTARIS', 'ADMINISTRATOR'];
         return !blackList.some(keyword => nameUpper.includes(keyword));
       });
-
       setMembers(filteredData);
     }
     setLoading(false);
@@ -75,8 +48,7 @@ const Members = () => {
 
   // --- 2. HAPUS DATA ---
   const handleDelete = async (id: number) => {
-    if (!window.confirm('PERINGATAN: Menghapus data ini akan menghilangkan akses Kartu Anggota user tersebut. Lanjutkan?')) return;
-    
+    if (!window.confirm('PERINGATAN: Menghapus data ini akan menghilangkan akses Kartu Anggota. Lanjutkan?')) return;
     const { error } = await supabase.from('members').delete().eq('id', id);
     if (!error) {
       setMembers(members.filter(m => m.id !== id));
@@ -86,66 +58,76 @@ const Members = () => {
     }
   };
 
-  // --- 3. BUKA MODAL ADD/EDIT ---
-  const openModal = (data: Member | null = null) => {
+  // --- 3. BUKA MODAL ---
+  const openModal = (data: any = null) => {
     if (data) {
       setIsEditing(true);
-      setFormData({ ...data }); // Load data lama
+      setFormData({ ...data });
     } else {
       setIsEditing(false);
-      // Reset form kosong
       setFormData({
-        full_name: '', nik: '', nip: '', birth_place: '', birth_date: '',
-        gender: 'Laki-laki', school_name: '', teacher_type: 'Guru Kelas',
-        phone: '', email: '', status: 'Active'
+        npa: '',
+        full_name: '',
+        nip: '',
+        nik: '',
+        birth_place: '',
+        birth_date: '',
+        gender: 'L',
+        school_name: 'SDN Kalijaga',
+        status: 'ASN',
+        teacher_type: 'Guru Kelas',
+        phone: '',
+        email: '',
+        username: '',
+        password: '',
+        account_status: 'Aktif',
+        role: 'user'
       });
     }
     setShowModal(true);
   };
 
-  // --- 4. SIMPAN DATA (ADD / EDIT) ---
+  // --- 4. SIMPAN DATA (FIXED: Tanpa user_id) ---
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
 
     try {
-      // Data yang akan dikirim ke DB
+      // Mapping Payload Sesuai 19 Kolom Database Bapak
       const payload = {
-          full_name: formData.full_name,
-          nip: formData.nip,
+          npa: formData.npa,
+          full_name: formData.full_name.toUpperCase(),
+          nip: formData.nip || '-',
           nik: formData.nik,
           birth_place: formData.birth_place,
           birth_date: formData.birth_date,
           gender: formData.gender,
           school_name: formData.school_name,
+          status: formData.status,
           teacher_type: formData.teacher_type,
           phone: formData.phone,
           email: formData.email,
-          status: formData.status
+          username: formData.username || formData.nik, // Default username pakai NIK
+          password: formData.password || '123456',     // Default password
+          account_status: formData.account_status,
+          role: formData.role,
+          avatar_url: formData.avatar_url || ''
       };
 
       if (isEditing) {
-        // UPDATE DATA
         const { error } = await supabase.from('members').update(payload).eq('id', formData.id);
         if (error) throw error;
       } else {
-        // INSERT BARU (Admin Menambah Manual)
-        const { data: { user } } = await supabase.auth.getUser();
-        
-        // Gabungkan payload dengan user_id (admin yang menginput)
-        const { error } = await supabase.from('members').insert([{
-          ...payload,
-          user_id: user?.id // Tetap butuh user_id agar lolos RLS, meski admin yang input
-        }]);
+        // PENTING: Jangan masukkan user_id di sini karena kolomnya tidak ada di DB
+        const { error } = await supabase.from('members').insert([payload]);
         if (error) throw error;
       }
 
-      alert(isEditing ? 'Data berhasil diupdate!' : 'Anggota berhasil ditambahkan!');
+      alert(isEditing ? 'Data Berhasil Diperbarui!' : 'Anggota Baru Berhasil Terdaftar!');
       setShowModal(false);
       fetchMembers();
-
     } catch (err: any) {
-      alert('Gagal menyimpan: ' + err.message);
+      alert('Gagal: ' + err.message);
     } finally {
       setSaving(false);
     }
@@ -153,59 +135,39 @@ const Members = () => {
 
   // --- 5. EXPORT EXCEL ---
   const exportToExcel = () => {
-    if (!XLSX) return alert("Fitur Excel belum aktif. Jalankan: npm install xlsx");
-    
+    if (!XLSX) return alert("Library Excel belum terpasang.");
     const data = filteredMembers.map(m => ({
-      'Nama Lengkap': m.full_name, 
-      'NIK': m.nik, 
-      'NIP': m.nip, 
-      'L/P': m.gender,
-      'TTL': `${m.birth_place || ''}, ${m.birth_date ? new Date(m.birth_date).toLocaleDateString('id-ID') : ''}`, 
-      'Unit Kerja': m.school_name,
-      'Jabatan': m.teacher_type, 
-      'No HP': m.phone, 
-      'Email': m.email,
-      'Status': m.status
+      'Nama': m.full_name, 'NIP': m.nip, 'NPA': m.npa, 'NIK': m.nik,
+      'L/P': m.gender, 'Unit': m.school_name, 'Jabatan': m.teacher_type,
+      'WA': m.phone, 'Email': m.email, 'Status': m.status
     }));
-    
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Database Anggota");
-    XLSX.writeFile(wb, `Data_PGRI_Lengkap_${new Date().toISOString().slice(0,10)}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, "Anggota");
+    XLSX.writeFile(wb, `Data_PGRI_Kalijaga.xlsx`);
   };
 
-  // --- 6. LOGIKA PENCARIAN ---
   const filteredMembers = members.filter(m => {
     const term = searchTerm.toLowerCase();
-    return (
-      (m.full_name?.toLowerCase() || '').includes(term) || 
-      (m.nip || '').includes(term) || 
-      (m.nik || '').includes(term) ||
-      (m.school_name?.toLowerCase() || '').includes(term)
-    );
+    return (m.full_name?.toLowerCase() || '').includes(term) || (m.nip || '').includes(term);
   });
 
   return (
-    <div className="space-y-6 animate-in fade-in">
-      
-      {/* HEADER & TOMBOL ATAS */}
-      <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+    <div className="space-y-6 animate-in fade-in p-2">
+      <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-6 rounded-[32px] border shadow-sm">
         <div>
-          <h1 className="text-2xl font-black text-gray-800 uppercase flex items-center gap-2">
-            <User size={28} className="text-red-600"/> Database Anggota
+          <h1 className="text-xl font-black text-gray-800 uppercase italic tracking-tighter flex items-center gap-2">
+            <Users size={24} className="text-red-700"/> Database Anggota
           </h1>
-          <p className="text-sm text-gray-500 flex items-center gap-2">
-            <Users size={14}/> Total Anggota Terdaftar (Real): <strong className="text-slate-800">{members.length} Orang</strong>
-          </p>
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">PGRI Ranting Kalijaga • Total: {members.length} Guru</p>
         </div>
         <div className="flex gap-2">
-           {/* Tombol Tambah Manual & Excel hanya untuk Admin */}
            {isAdmin && (
              <>
-               <button onClick={() => openModal()} className="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-xl font-bold text-xs uppercase shadow flex gap-2 items-center transition-all">
+               <button onClick={() => openModal()} className="bg-red-700 text-white px-5 py-2 rounded-2xl font-black text-[10px] uppercase shadow-lg shadow-red-100 flex gap-2 items-center">
                  <Plus size={16}/> Tambah Manual
                </button>
-               <button onClick={exportToExcel} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl font-bold text-xs uppercase shadow flex gap-2 items-center transition-all">
+               <button onClick={exportToExcel} className="bg-green-600 text-white px-5 py-2 rounded-2xl font-black text-[10px] uppercase shadow-lg shadow-green-100 flex gap-2 items-center">
                  <FileSpreadsheet size={16}/> Excel
                </button>
              </>
@@ -213,194 +175,120 @@ const Members = () => {
         </div>
       </div>
 
-      {/* SEARCH BAR */}
-      <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-3">
-        <Search className="text-gray-400" size={20} />
-        <input 
-          type="text" 
-          placeholder="Cari Nama, NIP, NIK, atau Sekolah..." 
-          className="w-full outline-none text-sm font-bold text-gray-700 placeholder:text-gray-400" 
-          value={searchTerm} 
-          onChange={(e) => setSearchTerm(e.target.value)} 
-        />
+      <div className="bg-white p-3 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-3">
+        <Search className="text-gray-400 ml-2" size={18} />
+        <input type="text" placeholder="Cari Nama, NIP, atau NIK..." className="w-full outline-none text-xs font-bold text-gray-700 uppercase" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
       </div>
 
-      {/* TABEL DATA */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        {loading ? (
-          <div className="p-12 text-center text-gray-400"><Loader2 className="animate-spin mx-auto mb-2"/> Memuat Data...</div>
-        ) : filteredMembers.length === 0 ? (
-          <div className="p-12 text-center text-gray-400">Data tidak ditemukan.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 border-b border-gray-200 font-bold text-gray-500 text-[10px] uppercase tracking-wider">
-                <tr>
-                  <th className="p-4">Identitas Personal</th>
-                  <th className="p-4">Profesi & Unit Kerja</th>
-                  <th className="p-4">Kontak</th>
-                  <th className="p-4 text-right">Aksi</th>
+      <div className="bg-white rounded-[32px] border shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-gray-50 border-b font-black text-gray-400 uppercase tracking-widest text-[9px]">
+              <tr>
+                <th className="p-6">Identitas Guru</th>
+                <th className="p-6">Unit Kerja & Status</th>
+                <th className="p-6">Kontak</th>
+                <th className="p-6 text-center">Aksi</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 font-bold">
+              {loading ? (
+                <tr><td colSpan={4} className="p-12 text-center"><Loader2 className="animate-spin mx-auto"/></td></tr>
+              ) : filteredMembers.map((m) => (
+                <tr key={m.id} className="hover:bg-gray-50/50 group transition-all">
+                  <td className="p-6">
+                    <div className="text-sm font-black text-gray-800 uppercase leading-none mb-1">{m.full_name}</div>
+                    <div className="flex gap-2 text-[9px] text-gray-400">
+                        <span>NIP: {m.nip}</span> • <span>NIK: {m.nik}</span>
+                    </div>
+                  </td>
+                  <td className="p-6">
+                    <div className="text-gray-700 uppercase">{m.school_name}</div>
+                    <div className="text-[9px] text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full w-fit mt-1">{m.teacher_type} • {m.status}</div>
+                  </td>
+                  <td className="p-6">
+                    <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-2 text-green-600 uppercase"><Phone size={12}/> {m.phone}</div>
+                        <div className="text-[9px] text-gray-400 lowercase">{m.email}</div>
+                    </div>
+                  </td>
+                  <td className="p-6 text-center">
+                    {isAdmin && (
+                      <div className="flex justify-center gap-2">
+                        <button onClick={() => openModal(m)} className="p-2 text-indigo-400 hover:text-indigo-700"><Edit size={16}/></button>
+                        <button onClick={() => handleDelete(m.id)} className="p-2 text-gray-300 hover:text-red-600"><Trash2 size={16}/></button>
+                      </div>
+                    )}
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filteredMembers.map((m) => (
-                  <tr key={m.id} className="hover:bg-slate-50 transition-colors group">
-                    <td className="p-4">
-                      <div className="font-bold text-gray-800 uppercase text-xs">{m.full_name}</div>
-                      <div className="text-[10px] text-gray-500 mt-1 flex flex-col gap-1">
-                        <span className="flex items-center gap-1 bg-gray-100 px-1.5 py-0.5 rounded w-fit"><CreditCard size={10}/> {m.nik || '-'}</span>
-                        {m.nip && m.nip !== '-' && <span className="flex items-center gap-1 text-blue-600 font-mono font-bold">NIP: {m.nip}</span>}
-                        <span className="flex items-center gap-1"><Calendar size={10}/> {m.birth_place || ''}, {m.birth_date ? new Date(m.birth_date).toLocaleDateString('id-ID') : '-'}</span>
-                        <span className="font-bold text-[9px] text-slate-400">({m.gender})</span>
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <div className="flex flex-col gap-1">
-                        <div className="font-bold text-slate-700 uppercase text-[11px] flex items-center gap-1">
-                           <School size={12} className="text-slate-400"/> {m.school_name || '-'}
-                        </div>
-                        <div className="flex items-center gap-1">
-                           <Briefcase size={10} className="text-indigo-400"/>
-                           <span className="text-[10px] text-indigo-700 font-bold bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">{m.teacher_type || '-'}</span>
-                        </div>
-                        <div className="mt-1">
-                           <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase border ${m.status === 'Active' ? 'bg-green-100 text-green-700 border-green-200' : 'bg-yellow-100 text-yellow-700 border-yellow-200'}`}>
-                              {m.status}
-                           </span>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <div className="flex flex-col gap-1 text-[11px]">
-                         <a href={`https://wa.me/${m.phone}`} target="_blank" className="flex items-center gap-1 text-green-600 font-bold hover:underline bg-green-50 px-2 py-1 rounded w-fit border border-green-100">
-                            <Phone size={12}/> {m.phone || '-'}
-                         </a>
-                         <span className="flex items-center gap-1 text-slate-500 mt-0.5">
-                            <Mail size={12}/> {m.email || '-'}
-                         </span>
-                      </div>
-                    </td>
-                    <td className="p-4 text-right">
-                      {isAdmin && (
-                        <div className="flex justify-end gap-2 opacity-80 group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => openModal(m)} className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 border border-indigo-100 transition-colors" title="Edit Data">
-                             <Edit size={14}/>
-                          </button>
-                          <button onClick={() => handleDelete(m.id)} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 border border-red-100 transition-colors" title="Hapus Permanen">
-                             <Trash2 size={14}/>
-                          </button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      {/* MODAL INPUT/EDIT LENGKAP */}
+      {/* MODAL INPUT LENGKAP */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-[24px] w-full max-w-lg shadow-2xl overflow-y-auto max-h-[90vh]">
-            <div className="bg-slate-800 p-5 text-white flex justify-between items-center sticky top-0 z-10">
-                <h3 className="font-bold text-sm uppercase flex items-center gap-2">
-                   {isEditing ? <Edit size={16}/> : <Plus size={16}/>} 
-                   {isEditing ? 'Edit Data Anggota' : 'Tambah Anggota Baru'}
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in zoom-in duration-200">
+          <div className="bg-white rounded-[40px] w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="bg-red-800 p-6 text-white flex justify-between items-center">
+                <h3 className="font-black text-xs uppercase italic tracking-tighter flex items-center gap-2">
+                   {isEditing ? <Edit size={16}/> : <Plus size={16}/>} {isEditing ? 'Revisi Data Anggota' : 'Registrasi Anggota Baru'}
                 </h3>
-                <button onClick={() => setShowModal(false)} className="hover:text-red-400 transition-colors"><X size={20}/></button>
+                <button onClick={() => setShowModal(false)}><X size={24}/></button>
             </div>
             
-            <form onSubmit={handleSave} className="p-6 space-y-4 text-sm">
-               
-               {/* Nama */}
-               <div>
-                   <label className="font-bold text-[10px] text-gray-500 uppercase block mb-1">Nama Lengkap (Gelar)</label>
-                   <input required className="w-full p-3 border-2 border-gray-100 rounded-xl font-bold uppercase focus:border-slate-800 outline-none" 
-                     value={formData.full_name} onChange={e=>setFormData({...formData, full_name: e.target.value})}/>
+            <form onSubmit={handleSave} className="p-8 overflow-y-auto space-y-6">
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Bagian Kiri */}
+                  <div className="space-y-4">
+                      <label className="text-[9px] font-black text-red-700 uppercase border-b w-full block pb-1">Biodata Guru</label>
+                      <input required placeholder="NAMA LENGKAP & GELAR" className="w-full p-4 bg-gray-50 border rounded-2xl text-xs font-bold uppercase" 
+                        value={formData.full_name} onChange={e=>setFormData({...formData, full_name: e.target.value})}/>
+                      <div className="grid grid-cols-2 gap-2">
+                         <input placeholder="NIP" className="w-full p-4 bg-gray-50 border rounded-2xl text-xs font-bold" value={formData.nip} onChange={e=>setFormData({...formData, nip: e.target.value})}/>
+                         <input required placeholder="NIK (KTP)" className="w-full p-4 bg-gray-50 border rounded-2xl text-xs font-bold" value={formData.nik} onChange={e=>setFormData({...formData, nik: e.target.value})}/>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                         <input placeholder="TEMPAT LAHIR" className="w-full p-4 bg-gray-50 border rounded-2xl text-xs font-bold uppercase" value={formData.birth_place} onChange={e=>setFormData({...formData, birth_place: e.target.value})}/>
+                         <input type="date" className="w-full p-4 bg-gray-50 border rounded-2xl text-xs font-bold" value={formData.birth_date} onChange={e=>setFormData({...formData, birth_date: e.target.value})}/>
+                      </div>
+                      <select className="w-full p-4 bg-gray-50 border rounded-2xl text-xs font-bold" value={formData.gender} onChange={e=>setFormData({...formData, gender: e.target.value})}>
+                          <option value="L">LAKI-LAKI</option><option value="P">PEREMPUAN</option>
+                      </select>
+                  </div>
+
+                  {/* Bagian Kanan */}
+                  <div className="space-y-4">
+                      <label className="text-[9px] font-black text-red-700 uppercase border-b w-full block pb-1">Tugas & Kontak</label>
+                      <input required placeholder="UNIT KERJA / SEKOLAH" className="w-full p-4 bg-gray-50 border rounded-2xl text-xs font-bold uppercase" value={formData.school_name} onChange={e=>setFormData({...formData, school_name: e.target.value})}/>
+                      <div className="grid grid-cols-2 gap-2">
+                        <select className="w-full p-4 bg-gray-50 border rounded-2xl text-xs font-bold" value={formData.teacher_type} onChange={e=>setFormData({...formData, teacher_type: e.target.value})}>
+                            <option>GURU KELAS</option><option>GURU MAPEL</option><option>GURU AGAMA</option><option>GURU PJOK</option><option>KEPALA SEKOLAH</option>
+                        </select>
+                        <select className="w-full p-4 bg-gray-50 border rounded-2xl text-xs font-bold" value={formData.status} onChange={e=>setFormData({...formData, status: e.target.value})}>
+                            <option>ASN</option><option>PPPK</option><option>HONORER</option>
+                        </select>
+                      </div>
+                      <input placeholder="NO. WHATSAPP" className="w-full p-4 bg-gray-50 border rounded-2xl text-xs font-bold" value={formData.phone} onChange={e=>setFormData({...formData, phone: e.target.value})}/>
+                      <input placeholder="EMAIL" className="w-full p-4 bg-gray-50 border rounded-2xl text-xs font-bold" value={formData.email} onChange={e=>setFormData({...formData, email: e.target.value})}/>
+                      <input placeholder="NPA (KARTU PGRI)" className="w-full p-4 bg-gray-50 border rounded-2xl text-xs font-bold" value={formData.npa} onChange={e=>setFormData({...formData, npa: e.target.value})}/>
+                  </div>
                </div>
 
-               {/* NIK & NIP */}
-               <div className="grid grid-cols-2 gap-4">
-                 <div>
-                     <label className="font-bold text-[10px] text-red-500 uppercase block mb-1">NIK (Kunci Identitas)</label>
-                     <input required minLength={16} type="number" className="w-full p-3 border-2 border-red-100 bg-red-50 rounded-xl font-mono focus:border-red-600 outline-none" 
-                       value={formData.nik} onChange={e=>setFormData({...formData, nik: e.target.value})}/>
-                 </div>
-                 <div>
-                     <label className="font-bold text-[10px] text-gray-500 uppercase block mb-1">NIP (Opsional)</label>
-                     <input type="number" className="w-full p-3 border-2 border-gray-100 rounded-xl font-mono focus:border-slate-800 outline-none" 
-                       value={formData.nip} onChange={e=>setFormData({...formData, nip: e.target.value})}/>
-                 </div>
+               {/* Akses Login */}
+               <div className="bg-red-50 p-6 rounded-3xl space-y-4">
+                  <label className="text-[9px] font-black text-red-800 uppercase flex items-center gap-2"><Fingerprint size={14}/> Kredensial Login Anggota</label>
+                  <div className="grid grid-cols-2 gap-4">
+                    <input placeholder="USERNAME" className="w-full p-4 bg-white border border-red-100 rounded-2xl text-xs font-black" value={formData.username} onChange={e=>setFormData({...formData, username: e.target.value})}/>
+                    <input placeholder="PASSWORD" type="text" className="w-full p-4 bg-white border border-red-100 rounded-2xl text-xs font-black" value={formData.password} onChange={e=>setFormData({...formData, password: e.target.value})}/>
+                  </div>
                </div>
 
-               {/* TTL & Gender */}
-               <div className="grid grid-cols-3 gap-3">
-                 <div className="col-span-1">
-                     <label className="font-bold text-[10px] text-gray-500 uppercase block mb-1">Tempat Lahir</label>
-                     <input className="w-full p-3 border-2 border-gray-100 rounded-xl focus:border-slate-800 outline-none" 
-                       value={formData.birth_place} onChange={e=>setFormData({...formData, birth_place: e.target.value})}/>
-                 </div>
-                 <div className="col-span-1">
-                     <label className="font-bold text-[10px] text-gray-500 uppercase block mb-1">Tgl Lahir</label>
-                     <input type="date" className="w-full p-3 border-2 border-gray-100 rounded-xl focus:border-slate-800 outline-none" 
-                       value={formData.birth_date} onChange={e=>setFormData({...formData, birth_date: e.target.value})}/>
-                 </div>
-                 <div className="col-span-1">
-                     <label className="font-bold text-[10px] text-gray-500 uppercase block mb-1">Gender</label>
-                     <select className="w-full p-3 border-2 border-gray-100 rounded-xl bg-white focus:border-slate-800 outline-none" 
-                       value={formData.gender} onChange={e=>setFormData({...formData, gender: e.target.value})}>
-                         <option>Laki-laki</option><option>Perempuan</option>
-                     </select>
-                 </div>
-               </div>
-
-               {/* Sekolah & Jabatan */}
-               <div className="grid grid-cols-2 gap-4">
-                 <div>
-                     <label className="font-bold text-[10px] text-gray-500 uppercase block mb-1">Unit Kerja</label>
-                     <input required className="w-full p-3 border-2 border-gray-100 rounded-xl uppercase font-bold focus:border-slate-800 outline-none" 
-                       value={formData.school_name} onChange={e=>setFormData({...formData, school_name: e.target.value})}/>
-                 </div>
-                 <div>
-                     <label className="font-bold text-[10px] text-gray-500 uppercase block mb-1">Jenis Guru</label>
-                     <select className="w-full p-3 border-2 border-gray-100 rounded-xl bg-white focus:border-slate-800 outline-none" 
-                       value={formData.teacher_type} onChange={e=>setFormData({...formData, teacher_type: e.target.value})}>
-                         <option>Guru Kelas</option><option>Guru Mapel</option><option>Guru Agama</option><option>Guru PJOK</option><option>Kepala Sekolah</option><option>Penjaga Sekolah</option><option>Operator</option>
-                     </select>
-                 </div>
-               </div>
-
-               {/* Kontak */}
-               <div className="grid grid-cols-2 gap-4">
-                 <div>
-                     <label className="font-bold text-[10px] text-gray-500 uppercase block mb-1">No WhatsApp</label>
-                     <input required type="number" className="w-full p-3 border-2 border-gray-100 rounded-xl focus:border-slate-800 outline-none" 
-                       value={formData.phone} onChange={e=>setFormData({...formData, phone: e.target.value})}/>
-                 </div>
-                 <div>
-                     <label className="font-bold text-[10px] text-gray-500 uppercase block mb-1">Email</label>
-                     <input type="email" className="w-full p-3 border-2 border-gray-100 rounded-xl focus:border-slate-800 outline-none" 
-                       value={formData.email} onChange={e=>setFormData({...formData, email: e.target.value})}/>
-                 </div>
-               </div>
-
-               {/* Status */}
-               <div>
-                   <label className="font-bold text-[10px] text-gray-500 uppercase block mb-1">Status Keanggotaan</label>
-                   <select className="w-full p-3 border-2 border-gray-100 rounded-xl bg-white focus:border-slate-800 outline-none" 
-                     value={formData.status} onChange={e=>setFormData({...formData, status: e.target.value})}>
-                       <option value="Active">Active (Aktif)</option>
-                       <option value="PNS">PNS</option>
-                       <option value="PPPK">PPPK</option>
-                       <option value="Honorer">Honorer</option>
-                   </select>
-               </div>
-
-               <div className="pt-2">
-                 <button type="submit" disabled={saving} className="w-full py-4 bg-blue-600 text-white rounded-xl font-black uppercase text-xs tracking-widest hover:bg-blue-700 shadow-xl transition-all flex justify-center items-center gap-2">
-                     {saving ? <Loader2 className="animate-spin"/> : (isEditing ? 'Simpan Perubahan' : 'Simpan Data Baru')}
+               <div className="pt-4 flex gap-3 border-t">
+                 <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-4 text-xs font-black uppercase text-gray-400">Batal</button>
+                 <button type="submit" disabled={saving} className="flex-[2] py-4 bg-red-700 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl flex justify-center items-center gap-2">
+                     {saving ? <Loader2 className="animate-spin"/> : <><Save size={18}/> Simpan Data</>}
                  </button>
                </div>
             </form>
